@@ -36,5 +36,4 @@ Through the manipulation of algorithmic parameters, a diverse spectrum of visual
 
 The Perlin Power Fractal algorithm, expounded upon in this exploratory study, emerges as a potent tool for crafting curated latent noise—a valuable asset in the context of generative text-to-image synthesis. As the discipline of noise generation remains relatively uncharted, further research is imperative to grasp the full spectrum of benefits and potential limitations when integrating latent diffusion models into creative applications.
 
-**Author:** Jordan Thompson (WASasquatch)
-**GitHub:** [WASasquatch](https://github.com/WASasquatch)
+**Author:** Jordan Thompson **GitHub:** [WASasquatch](https://github.com/WASasquatch)
