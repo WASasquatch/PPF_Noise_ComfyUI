@@ -68,6 +68,15 @@ Comparing some random Lexica prompts
 Those clean skins should illustrate the point
 ![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/321ec24e-cb7a-4704-85b1-2b483df4ce0d)
 
+and these 2 ,use ttn pipe loder and ksample,same pro,those node have four prompts weight control, when choosing comfy++, this enhancement becomes very intuitive
+
+![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/35781b41-4e20-459e-b98e-8d0638346a35)
+
+![2 1-rMada Merge - SD 2 1 768_v7 0 safetensors_00262](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/dc334e41-d4cc-415d-8996-b08c48d80cc2)
+![2 1-rMada Merge - SD 2 1 768_v7 0 safetensors_00263](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/1087738a-5199-46a9-a9d0-46bb6730ef50)
+
+
+
 ![test rmada merge 2 1 p_00011](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/0606a0da-44f7-40e1-9565-0f1f635fb958)
 ![test rmada merge 2 1 comfy o_00010](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/3d716398-fd5c-45a7-b9fe-59e4b4f3218e)
 ![test rmada merge 2 1 p_00012](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/f226ab35-839f-4c3a-addb-56012e1b4c2d)
