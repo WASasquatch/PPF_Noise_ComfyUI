@@ -55,8 +55,34 @@ pro:Fluffy cat
 
 ![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/23bd0050-a63c-4ccb-9e1a-cf6183c203a3)
 
+Comparing some random Lexica prompts
 
 ![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/52d11cca-e220-4277-8d0c-8cd06260ab5d)
+
+![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/9293b7b5-f1e2-42a5-9978-6ea4bf811b57)
+
+![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/9f149df5-ccd7-4ad0-bf10-f17d82de565b)
+
+![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/c3a82bb8-f899-4f5e-8ef1-067be1bc5481)
+
+Those clean skins should illustrate the point
+![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/321ec24e-cb7a-4704-85b1-2b483df4ce0d)
+
+![test rmada merge 2 1 p_00011](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/0606a0da-44f7-40e1-9565-0f1f635fb958)
+![test rmada merge 2 1 comfy o_00010](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/3d716398-fd5c-45a7-b9fe-59e4b4f3218e)
+![test rmada merge 2 1 p_00012](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/f226ab35-839f-4c3a-addb-56012e1b4c2d)
+![test rmada merge 2 1 comfy o_00011](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/1d2ec193-0ec7-49ba-b58d-b3aaf9cb8c24)
+![test rmada merge 2 1 p_00013](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/01047786-e86f-491b-ad5e-a0589b4313dc)
+![test rmada merge 2 1 comfy o_00012](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/5f0bb94e-0174-42e0-bcfe-0210faf49b4e)
+![test rmada merge 2 1 p_00016](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/c22cfa6b-2339-448f-bad7-d377df6e2cb3)
+![test rmada merge 2 1 comfy o_00015](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/335b111c-67d1-4166-a5df-636e0a0d9791)
+![test rmada merge 2 1 p_00017](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/ee805323-85c3-45c6-a0df-4a460bc4cc25)
+![test rmada merge 2 1 comfy o_00016](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/a4fe0823-78ec-461f-bbcf-526cf592d747)
+![test rmada merge 2 1 p_00019](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/82f0a142-020c-482c-91c1-8823d020eaff)
+![test rmada merge 2 1 comfy o_00018](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/e40c5a4e-bacf-4e8d-9034-8014413d9b34)
+![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/3a6e7a35-7747-44ff-957b-da414d7aa2be)
+
+
 
 ![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/5cde1007-8b92-4f5b-8e9b-13166383a1b2)
 ![image](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/3257317/ac0f4950-3382-4066-b1a9-9d21961a3038)
