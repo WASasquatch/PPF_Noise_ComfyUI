@@ -32,6 +32,8 @@ To traverse the spatial dimensions of the noise patterns, the algorithm incorpor
 
 Through the manipulation of algorithmic parameters, a diverse spectrum of visual outcomes emerges in the realm of diffusion generation. This spans from subtle, smooth patterns to intricate, intensified formations replete with high-frequency details. The implications of these results extend to offering users control over rich contrast and high-frequency ranges within the landscape of generative text-to-image synthesis.
 
+*(images coming soon*
+
 ## Conclusion:
 
 The Perlin Power Fractal algorithm, expounded upon in this exploratory study, emerges as a potent tool for crafting curated latent noise—a valuable asset in the context of generative text-to-image synthesis. As the discipline of noise generation remains relatively uncharted, further research is imperative to grasp the full spectrum of benefits and potential limitations when integrating latent diffusion models into creative applications.
