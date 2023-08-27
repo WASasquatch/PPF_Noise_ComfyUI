@@ -32,7 +32,9 @@ To traverse the spatial dimensions of the noise patterns, the algorithm incorpor
 
 Through the manipulation of algorithmic parameters, a diverse spectrum of visual outcomes emerges in the realm of diffusion generation. This spans from subtle, smooth patterns to intricate, intensified formations replete with high-frequency details. The implications of these results extend to offering users control over rich contrast and high-frequency ranges within the landscape of generative text-to-image synthesis.
 
-*(images coming soon*
+![263528205-c3a82bb8-f899-4f5e-8ef1-067be1bc5481](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/1151589/642c386f-f5ba-4493-ae6e-c283f695c9ff)
+![263524550-b7e3ec97-cc15-451b-b298-cc3c0661d131](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/1151589/0ab2a9bf-dbf1-4cb7-b251-4c14d1af1989)
+![263524664-def69b6a-e9b2-4bba-b45a-1320c9c8dfd9](https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/1151589/ad13e48e-0df4-42d3-8b3f-63bd21335224)
 
 ## Conclusion:
 
