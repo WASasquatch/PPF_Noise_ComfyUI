@@ -150,9 +150,9 @@ class WAS_PFN_Latent:
                 "height": ("INT", {"default": 512, "max": 8192, "min": 64, "step": 1}),
                 "scale": ("INT", {"default": 100, "max": 2048, "min": 2, "step": 1}),
                 "octaves": ("INT", {"default": 8, "max": 8, "min": 0, "step": 1}),
-                "persistence": ("FLOAT", {"default": 1.0, "max": 100.0, "min": 0.01, "step": 0.01}),
-                "lacunarity": ("FLOAT", {"default": 2.0, "max": 100.0, "min": 0.01, "step": 0.01}),
-                "exponent": ("FLOAT", {"default": 4.0, "max": 100.0, "min": 0.01, "step": 0.01}),
+                "persistence": ("FLOAT", {"default": 1.0, "max": 10.0, "min": 0.01, "step": 0.01}),
+                "lacunarity": ("FLOAT", {"default": 2.0, "max": 1000.0, "min": 0.01, "step": 0.01}),
+                "exponent": ("FLOAT", {"default": 4.0, "max": 38.0, "min": 0.01, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}), 
             },
         }
