@@ -183,6 +183,8 @@ class WAS_PFN_Latent:
         width = width // 8
         height = height // 8
         
+        seed = int(str(seed)[:10])
+        
         latents, tensors = perlin_power_fractal_batch(batch_size, width, height, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed)       
         
         return ({'samples': latents}, tensors)
