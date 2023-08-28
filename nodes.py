@@ -6,7 +6,7 @@ import random
 
 import nodes
 
-def perlin_power_fractal_batch(batch_size, width, height, octaves=4, persistence=1.0, lacunarity=2.0, exponent=4.0, scale=100, brightness=1.0, contrast=1.0, seed=None):
+def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, evolution_factor=0.1, octaves=4, persistence=1.0, lacunarity=2.0, exponent=4.0, scale=100, brightness=0.0, contrast=0.0, seed=None):
     """
     Generate a batch of images with a Perlin power fractal effect.
 
@@ -14,6 +14,11 @@ def perlin_power_fractal_batch(batch_size, width, height, octaves=4, persistence
         batch_size (int): Number of noisy tensors to generate in the batch.
         width (int): Width of each tensor in pixels.
         height (int): Height of each image in pixels.
+        X (float): X-coordinate offset for noise sampling.
+        Y (float): Y-coordinate offset for noise sampling.
+        Z (float): Z-coordinate offset for noise sampling.
+        frame (int): The current frame number for time evolution.
+        evolution_factor (float): Factor controlling time evolution. Determines how much the noise evolves over time based on the batch index.
         octaves (int): Number of octaves for fractal generation. Controls the level of detail and complexity in the output.
             Lower values (0-3) create smoother patterns, while higher values (6-8) create more intricate and rough patterns.
         persistence (float): Persistence parameter for fractal generation. Determines the amplitude decrease of each octave.
@@ -96,7 +101,7 @@ def perlin_power_fractal_batch(batch_size, width, height, octaves=4, persistence
         total_amplitude = 0.0
 
         for octave in range(octaves):
-            frequency = lacunarity ** octave
+            frequency = lacunarity ** octave * scale
             amplitude *= persistence
             total_amplitude += amplitude
 
@@ -104,10 +109,12 @@ def perlin_power_fractal_batch(batch_size, width, height, octaves=4, persistence
                 for x in range(width):
                     nx = x / width * frequency
                     ny = y / height * frequency
-                    noise_value_r = noise(nx, ny, 0, p) * amplitude ** exponent
-                    noise_value_g = noise(nx + 1000, ny + 1000, 0, p) * amplitude ** exponent
-                    noise_value_b = noise(nx + 2000, ny + 2000, 0, p) * amplitude ** exponent
-                    noise_value_a = noise(nx + 3000, ny + 3000, 0, p) * amplitude ** exponent
+                    nz = evolution_factor * (i / batch_size) + frame * 0.01
+                    
+                    noise_value_r = noise(nx + X, ny + Y, nz + Z, p) * amplitude ** exponent
+                    noise_value_g = noise(nx + X + 1000, ny + Y + 1000, nz + Z + 1000, p) * amplitude ** exponent
+                    noise_value_b = noise(nx + X + 2000, ny + Y + 2000, nz + Z + 2000, p) * amplitude ** exponent
+                    noise_value_a = noise(nx + X + 3000, ny + Y + 3000, nz + Z + 3000, p) * amplitude ** exponent
 
                     current_value_r = noise_map_r[y, x]
                     current_value_g = noise_map_g[y, x]
@@ -118,7 +125,7 @@ def perlin_power_fractal_batch(batch_size, width, height, octaves=4, persistence
                     noise_map_g[y, x] = current_value_g + noise_value_g
                     noise_map_b[y, x] = current_value_b + noise_value_b
                     noise_map_a[y, x] = current_value_a + noise_value_a
-
+                    
         min_value_r = np.min(noise_map_r)
         max_value_r = np.max(noise_map_r)
         min_value_g = np.min(noise_map_g)
@@ -145,8 +152,7 @@ def perlin_power_fractal_batch(batch_size, width, height, octaves=4, persistence
     latents = image_tensor_batch.view(batch_size, 4, height, width)
     tensors = image_tensor_batch.reshape(batch_size, height, width, 4)
 
-    return (latents, tensors)
-    
+    return (latents, tensors)   
     
 # COMFYUI NODES
 
@@ -161,6 +167,11 @@ class WAS_PFN_Latent:
                 "batch_size": ("INT", {"default": 1, "max": 64, "min": 1, "step": 1}),
                 "width": ("INT", {"default": 512, "max": 8192, "min": 64, "step": 1}),
                 "height": ("INT", {"default": 512, "max": 8192, "min": 64, "step": 1}),
+                "X": ("INT", {"default": 0, "max": 99999999, "min": -99999999, "step": 1}),
+                "Y": ("INT", {"default": 0, "max": 99999999, "min": -99999999, "step": 1}),
+                "Z": ("INT", {"default": 0, "max": 99999999, "min": -99999999, "step": 1}),
+                "evolution": ("FLOAT", {"default": 0.0, "max": 1.0, "min": 0.0, "step": 0.01}),
+                "frame": ("INT", {"default": 0, "max": 99999999, "min": 0, "step": 1}),
                 "scale": ("INT", {"default": 100, "max": 2048, "min": 2, "step": 1}),
                 "octaves": ("INT", {"default": 8, "max": 8, "min": 0, "step": 1}),
                 "persistence": ("FLOAT", {"default": 1.0, "max": 10.0, "min": 0.01, "step": 0.01}),
@@ -178,14 +189,14 @@ class WAS_PFN_Latent:
 
     CATEGORY = "latent/noise"
 
-    def power_fractal_latent(self, batch_size, width, height, scale, octaves, persistence, lacunarity, exponent, brightness, contrast, seed):
+    def power_fractal_latent(self, batch_size, width, height, X, Y, Z, evolution, frame, scale, octaves, persistence, lacunarity, exponent, brightness, contrast, seed):
             
         width = width // 8
         height = height // 8
         
-        seed = int(str(seed)[:10])
+        seed = int(str(seed)[:8])
         
-        latents, tensors = perlin_power_fractal_batch(batch_size, width, height, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed)       
+        latents, tensors = perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed)       
         
         return ({'samples': latents}, tensors)
         
