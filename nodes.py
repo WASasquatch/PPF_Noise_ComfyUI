@@ -184,7 +184,7 @@ class WAS_PFN_Latent:
         }
 
     RETURN_TYPES = ("LATENT","IMAGE")
-    RETURN_NAMES = ("latents","images")
+    RETURN_NAMES = ("latents","previews")
     FUNCTION = "power_fractal_latent"
 
     CATEGORY = "latent/noise"
