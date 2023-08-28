@@ -101,16 +101,16 @@ def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, evolut
         total_amplitude = 0.0
 
         for octave in range(octaves):
-            frequency = lacunarity ** octave * scale
+            frequency = lacunarity ** octave
             amplitude *= persistence
             total_amplitude += amplitude
 
             for y in range(height):
                 for x in range(width):
-                    nx = x / width * frequency
-                    ny = y / height * frequency
-                    nz = evolution_factor * (i / batch_size) + frame * 0.01
-                    
+                    nx = x / scale * frequency
+                    ny = y / scale * frequency
+                    nz = evolution_factor * i + frame
+
                     noise_value_r = noise(nx + X, ny + Y, nz + Z, p) * amplitude ** exponent
                     noise_value_g = noise(nx + X + 1000, ny + Y + 1000, nz + Z + 1000, p) * amplitude ** exponent
                     noise_value_b = noise(nx + X + 2000, ny + Y + 2000, nz + Z + 2000, p) * amplitude ** exponent
