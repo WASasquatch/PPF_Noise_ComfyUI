@@ -126,7 +126,7 @@ def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device
 
     latent = image_tensor_batch.permute(0, 3, 1, 2)
     
-    return latent
+    return latent.to(device="cpu")
     
 # COMFYUI NODES
 
@@ -220,7 +220,7 @@ class WAS_PFN_Latent:
         tensors = torch.cat(modified_rgba_tensors, dim=0)
         
         if encoding_vae == None:
-            latents = tensors.permute(0, 3, 2, 1)
+            latents = tensors.permute(0, 3, 1, 2)
             
             return ({'samples': latents}, tensors)
             
