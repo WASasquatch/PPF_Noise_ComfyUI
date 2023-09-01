@@ -177,9 +177,9 @@ class WAS_PFN_Latent:
 
     CATEGORY = "latent/noise"
 
-    def power_fractal_latent(self, batch_size, width, height, X, Y, Z, evolution, frame, scale, octaves, persistence, lacunarity, exponent, brightness, contrast, amplify_latent, seed, device, encoding_vae=None):
+    def power_fractal_latent(self, batch_size, width, height, X, Y, Z, evolution, frame, scale, octaves, persistence, lacunarity, exponent, brightness, contrast, amplify_latent, seed, device, optional_vae=None):
     
-        if encoding_vae == None:
+        if optional_vae == None:
             width = width // 8
             height = height // 8
             
@@ -230,7 +230,7 @@ class WAS_PFN_Latent:
             
         tensors = torch.cat(modified_rgba_tensors, dim=0)
         
-        if encoding_vae == None:
+        if optional_vae == None:
             latents = tensors.permute(0, 3, 1, 2)
             return ({'samples': latents}, tensors)
             
@@ -238,7 +238,7 @@ class WAS_PFN_Latent:
         
         latents = []
         for tensor in tensors:
-            latents.append(encoder.encode(encoding_vae, tensor.unsqueeze(0))[0]['samples'])
+            latents.append(encoder.encode(optional_vae, tensor.unsqueeze(0))[0]['samples'])
             
         latents = torch.cat(latents)
 
