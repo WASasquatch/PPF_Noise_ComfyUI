@@ -1,8 +1,9 @@
 import torch
+import math
 
 import nodes
 
-def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device='cpu', evolution_factor=0.1, octaves=4, persistence=0.5, lacunarity=2.0, exponent=4.0, scale=100, brightness=0.0, contrast=0.0, seed=None):
+def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device='cpu', evolution_factor=0.1, octaves=4, persistence=0.5, lacunarity=2.0, exponent=4.0, scale=100, brightness=0.0, contrast=0.0, amplify_latent=False, seed=None):
     """
     Generate a batch of images with a Perlin power fractal effect.
 
@@ -114,19 +115,27 @@ def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device
 
         noise_map += noise_values.unsqueeze(-1)
 
-    min_value = noise_map.min()
-    max_value = noise_map.max()
+    latent = (noise_map + brightness) * (1.0 + contrast)
+    latent = torch.clamp(latent, 0.0, 1.0)
 
-    noise_map = (noise_map - min_value) / (max_value - min_value)
+    latent[..., -1] = 1.0
 
-    image_tensor_batch = (noise_map + brightness) * (1.0 + contrast)
-    image_tensor_batch = torch.clamp(image_tensor_batch, 0.0, 1.0)
+    if amplify_latent:
+        amplification = 2.0
+    else:
+        amplification = 1.0
+        
+    print(f"Amplification: {amplification}")
 
-    image_tensor_batch[..., -1] = 1.0
+    min_value = latent.min()
+    max_value = latent.max()
 
-    latent = image_tensor_batch.permute(0, 3, 1, 2)
+    latent = (latent - min_value) / (max_value - min_value)
+
+    latent = torch.zeros([batch_size, 4, height, width]) + (latent.permute(0, 3, 1, 2).to(device="cpu") * amplification)
+
     
-    return latent.to(device="cpu")
+    return latent
     
 # COMFYUI NODES
 
@@ -153,11 +162,12 @@ class WAS_PFN_Latent:
                 "exponent": ("FLOAT", {"default": 4.0, "max": 38.0, "min": 0.01, "step": 0.01}),
                 "brightness": ("FLOAT", {"default": 0.0, "max": 1.0, "min": -1.0, "step": 0.01}),
                 "contrast": ("FLOAT", {"default": 0.0, "max": 1.0, "min": -1.0, "step": 0.01}),
+                "amplify_latent": (['false', 'true',],),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}), 
                 "device": (["cpu", "cuda"],),
             },
             "optional": {
-                "encoding_vae": ("VAE",),
+                "optional_vae": ("VAE",),
             }
         }
 
@@ -167,7 +177,7 @@ class WAS_PFN_Latent:
 
     CATEGORY = "latent/noise"
 
-    def power_fractal_latent(self, batch_size, width, height, X, Y, Z, evolution, frame, scale, octaves, persistence, lacunarity, exponent, brightness, contrast, seed, device, encoding_vae=None):
+    def power_fractal_latent(self, batch_size, width, height, X, Y, Z, evolution, frame, scale, octaves, persistence, lacunarity, exponent, brightness, contrast, amplify_latent, seed, device, encoding_vae=None):
     
         if encoding_vae == None:
             width = width // 8
@@ -175,6 +185,7 @@ class WAS_PFN_Latent:
             
         color_intensity = 2
         masking_intensity = 12
+        amplify_latent = (amplify_latent == "true")
 
         modified_rgba_tensors = []
         for i in range(batch_size):
@@ -182,7 +193,7 @@ class WAS_PFN_Latent:
             rgba_noise_maps = []
             
             for j in range(6):
-                rgba_noise_map = self.generate_noise_map(width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, nseed + j)
+                rgba_noise_map = self.generate_noise_map(width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, amplify_latent, nseed + j)
                 rgba_noise_maps.append(rgba_noise_map.squeeze(0))
 
             red_mask = torch.mean(rgba_noise_maps[3], dim=0, keepdim=True) * torch.mean(rgba_noise_maps[4], dim=0, keepdim=True) * color_intensity
@@ -221,7 +232,6 @@ class WAS_PFN_Latent:
         
         if encoding_vae == None:
             latents = tensors.permute(0, 3, 1, 2)
-
             return ({'samples': latents}, tensors)
             
         encoder = nodes.VAEEncode()
@@ -234,8 +244,8 @@ class WAS_PFN_Latent:
 
         return ({'samples': latents}, tensors)
         
-    def generate_noise_map(self, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed):
-        return perlin_power_fractal_batch(1, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed)
+    def generate_noise_map(self, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, amplify_latent, seed):
+        return perlin_power_fractal_batch(1, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, amplify_latent, seed)
         
 class WAS_PFN_Blend_Latents:
     @classmethod
