@@ -221,7 +221,7 @@ class WAS_PFN_Latent:
         
         if encoding_vae == None:
             latents = tensors.permute(0, 3, 1, 2)
-            
+
             return ({'samples': latents}, tensors)
             
         encoder = nodes.VAEEncode()
@@ -231,17 +231,141 @@ class WAS_PFN_Latent:
             latents.append(encoder.encode(encoding_vae, tensor.unsqueeze(0))[0]['samples'])
             
         latents = torch.cat(latents)
-        
+
         return ({'samples': latents}, tensors)
         
     def generate_noise_map(self, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed):
         return perlin_power_fractal_batch(1, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed)
         
+class WAS_PFN_Blend_Latents:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "latent_a": ("LATENT",),
+                "latent_b": ("LATENT",),
+                "operation": (["add", "multiply", "divide", "subtract", "overlay", "hard_light", "soft_light", "screen", "linear_dodge", "difference", "exclusion", "random"],),
+                "blend_ratio": ("FLOAT", {"default": 0.5, "min": 0.01, "max": 1.0, "step": 0.01}),
+                "blend_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 0.01}),
+            },
+            "optional": {
+                "mask": ("MASK",),
+                "set_noise_mask": (["false", "true"],),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "latent_blend"
+    CATEGORY = "latent"
+
+    def latent_blend(self, latent_a, latent_b, operation, blend_ratio, blend_strength, mask=None, set_noise_mask=None):
+        blended_latent = self.blend_latents(latent_a["samples"], latent_b["samples"], operation, blend_ratio, blend_strength)
+        if mask is not None:
+            blend_mask = self.transform_mask(mask, latent_a["samples"].shape)
+            blended_latent = blend_mask * blended_latent + (1 - blend_mask) * latent_a["samples"]
+            if set_noise_mask == 'true':
+                return ({"samples": blended_latent, "noise_mask": mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1]))}, )
+            else:
+                return ({"samples": blended_latent}, )
+        else:
+            return ({"samples": blended_latent}, )
+
+    def blend_latents(self, latent1, latent2, mode='add', blend_percentage=0.5, blend_strength=0.5, mask=None):
+        def overlay_blend(latent1, latent2, blend_factor):
+            low = 2 * latent1 * latent2
+            high = 1 - 2 * (1 - latent1) * (1 - latent2)
+            blended_latent = (latent1 * blend_factor) * low + (latent2 * blend_factor) * high
+            return blended_latent
+
+        def screen_blend(latent1, latent2, blend_factor):
+            inverted_latent1 = 1 - latent1
+            inverted_latent2 = 1 - latent2
+            blended_latent = 1 - (inverted_latent1 * inverted_latent2 * (1 - blend_factor))
+            return blended_latent
+
+        def difference_blend(latent1, latent2, blend_factor):
+            blended_latent = abs(latent1 - latent2) * blend_factor
+            return blended_latent
+
+        def exclusion_blend(latent1, latent2, blend_factor):
+            blended_latent = (latent1 + latent2 - 2 * latent1 * latent2) * blend_factor
+            return blended_latent
+
+        def hard_light_blend(latent1, latent2, blend_factor):
+            blended_latent = torch.where(latent2 < 0.5, 2 * latent1 * latent2, 1 - 2 * (1 - latent1) * (1 - latent2)) * blend_factor
+            return blended_latent
+
+        def linear_dodge_blend(latent1, latent2, blend_factor):
+            blended_latent = torch.clamp(latent1 + latent2, 0, 1) * blend_factor
+            return blended_latent
+
+        def soft_light_blend(latent1, latent2, blend_factor):
+            low = 2 * latent1 * latent2 + latent1 ** 2 - 2 * latent1 * latent2 * latent1
+            high = 2 * latent1 * (1 - latent2) + torch.sqrt(latent1) * (2 * latent2 - 1)
+            blended_latent = (latent1 * blend_factor) * low + (latent2 * blend_factor) * high
+            return blended_latent
+
+        def random_noise(latent1, latent2, blend_factor):
+            noise1 = torch.randn_like(latent1)
+            noise2 = torch.randn_like(latent2)
+            noise1 = (noise1 - noise1.min()) / (noise1.max() - noise1.min())
+            noise2 = (noise2 - noise2.min()) / (noise2.max() - noise2.min())
+            blended_noise = (latent1 * blend_factor) * noise1 + (latent2 * blend_factor) * noise2
+            blended_noise = torch.clamp(blended_noise, 0, 1)
+            return blended_noise
+            
+        def normalize(latent):
+            return (latent - latent.min()) / (latent.max() - latent.min())
+                
+        blend_factor1 = blend_percentage
+        blend_factor2 = 1 - blend_percentage
+
+        if mode == 'add':
+            blended_latent = (latent1 * blend_strength * blend_factor1) + (latent2 * blend_strength * blend_factor2)
+        elif mode == 'multiply':
+            blended_latent = (latent1 * blend_strength * blend_factor1) * (latent2 * blend_strength * blend_factor2)
+        elif mode == 'divide':
+            blended_latent = (latent1 * blend_strength * blend_factor1) / (latent2 * blend_strength * blend_factor2)
+        elif mode == 'subtract':
+            blended_latent = (latent1 * blend_strength * blend_factor1) - (latent2 * blend_strength * blend_factor2)
+        elif mode == 'overlay':
+            blended_latent = overlay_blend(latent1, latent2, blend_strength * blend_factor1)
+        elif mode == 'screen':
+            blended_latent = screen_blend(latent1, latent2, blend_strength * blend_factor1)
+        elif mode == 'difference':
+            blended_latent = difference_blend(latent1, latent2, blend_strength * blend_factor1)
+        elif mode == 'exclusion':
+            blended_latent = exclusion_blend(latent1, latent2, blend_strength * blend_factor1)
+        elif mode == 'hard_light':
+            blended_latent = hard_light_blend(latent1, latent2, blend_strength * blend_factor1)
+        elif mode == 'linear_dodge':
+            blended_latent = linear_dodge_blend(latent1, latent2, blend_strength * blend_factor1)
+        elif mode == 'soft_light':
+            blended_latent = soft_light_blend(latent1, latent2, blend_strength * blend_factor1)
+        elif mode == 'random':
+            blended_latent = random_noise(latent1, latent2, blend_strength * blend_factor1)
+        else:
+            raise ValueError("Unsupported blending mode. Please choose from 'add', 'multiply', 'divide', 'subtract', 'overlay', 'screen', 'difference', 'exclusion', 'hard_light', 'linear_dodge', 'soft_light', 'custom_noise'.")
+
+        blended_latent = normalize(blended_latent)
+        return blended_latent
+
+    def transform_mask(self, mask, shape):
+        mask = mask.view(-1, 1, mask.shape[-2], mask.shape[-1])
+        resized_mask = torch.nn.functional.interpolate(mask, size=(shape[2], shape[3]), mode="bilinear")
+        expanded_mask = resized_mask.expand(-1, shape[1], -1, -1)
+        if expanded_mask.shape[0] < shape[0]:
+            expanded_mask = expanded_mask.repeat((shape[0] - 1) // expanded_mask.shape[0] + 1, 1, 1, 1)[:shape[0]]
+        del mask, resized_mask
+        return expanded_mask
+        
 NODE_CLASS_MAPPINGS = {
-    "WAS_PFN_Latent": WAS_PFN_Latent
+    "WAS_PFN_Latent": WAS_PFN_Latent,
+    "WAS_PFN_Blend_Latents": WAS_PFN_Blend_Latents
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "WAS_PFN_Latent": "Perlin Power Fractal Noise"
+    "WAS_PFN_Latent": "Perlin Power Fractal Noise",
+    "WAS_PFN_Blend_Latents": "Blend Latents (PPF Noise)"
 }
 
