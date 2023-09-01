@@ -5,6 +5,5 @@
 
 ## Installation
  - Clone the repo to `ComfyUI/custom_nodes`
- - If you're using [torch beta](https://github.com/WASasquatch/PPF_Noise_ComfyUI/tree/ppf_torch), you do not need to install requirements.
-   - If you are using previous builds, run the requirements.txt against your ComfyUI Python Environment
+   - If you are using previous non-torch builds, run the requirements.txt against your ComfyUI Python Environment
      - ***ComfyUI Standalone Portable example:*** `C:\ComfyUI_windows_portable\python_embeded\python.exe -s -m pip install -r "C:\ComfyUI_windows_portable\custom_nodes\PPF_Noise_ComfyUI\requirements.txt"`
