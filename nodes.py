@@ -342,12 +342,12 @@ class WAS_PFN_Blend_Latents:
         return expanded_mask
         
 NODE_CLASS_MAPPINGS = {
-    "Perlin Power Fractal Latent": WAS_PFN_Latent,
+    "Perlin Power Fractal Latent (PPF Noise)": WAS_PFN_Latent,
     "Blend Latents (PPF Noise)": WAS_PFN_Blend_Latents
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Perlin Power Fractal Latent": "Perlin Power Fractal Noise",
+    "Perlin Power Fractal Latent (PPF Noise)": "Perlin Power Fractal Noise (PPF Noise)",
     "Blend Latents (PPF Noise)": "Blend Latents (PPF Noise)"
 }
 
