@@ -120,9 +120,8 @@ def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device
         nz = (Z + octave) / scale
 
         noise_values = noise(nx, ny, nz, p) * (amplitude ** exponent)
-        noise_values = noise_values.unsqueeze(-1)
-
-        noise_map += noise_values.view(1, width, height) * amplitude
+        
+        noise_map += noise_values.squeeze(-1) * amplitude
 
     latent = (noise_map + brightness) * (1.0 + contrast)
     latent = normalize(latent, min_clamp, max_clamp)
