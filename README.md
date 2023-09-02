@@ -7,6 +7,15 @@
 
 Generate a batch of images with a Perlin power fractal effect.
 
+---
+
+# Installation
+ - Clone the repo to `ComfyUI/custom_nodes`. Torch versions do not need requirements.txt installed.
+   - If you are using previous non-torch builds, run the requirements.txt against your ComfyUI Python Environment
+     - ***ComfyUI Standalone Portable example:*** `C:\ComfyUI_windows_portable\python_embeded\python.exe -s -m pip install -r "C:\ComfyUI_windows_portable\custom_nodes\PPF_Noise_ComfyUI\requirements.txt"`
+    
+---
+
 ## **Perlin Power Fractal Noise** Parameters
 
 ### Required:
@@ -68,6 +77,8 @@ Generate a batch of images with a Perlin power fractal effect.
 ### Returns
 - `tuple` (torch.Tensor [latent], torch.Tensor [image])
 
+---
+
 ## **WAS_PFN_Blend_Latents** Parameters
 
 This class provides a method for blending two latent tensors.
@@ -118,8 +129,3 @@ This class provides a method for blending two latent tensors.
     - Range: [-10.0, 10.0]
 ### Returns
 - `tuple` (LATENT,): A tuple containing the blended latent tensor.
-
-# Installation
- - Clone the repo to `ComfyUI/custom_nodes`. Torch versions do not need requirements.txt installed.
-   - If you are using previous non-torch builds, run the requirements.txt against your ComfyUI Python Environment
-     - ***ComfyUI Standalone Portable example:*** `C:\ComfyUI_windows_portable\python_embeded\python.exe -s -m pip install -r "C:\ComfyUI_windows_portable\custom_nodes\PPF_Noise_ComfyUI\requirements.txt"`
