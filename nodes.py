@@ -1,9 +1,17 @@
 import torch
+import torch.nn.functional as F
 import math
 
 import nodes
 
-def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device='cpu', evolution_factor=0.1, octaves=4, persistence=0.5, lacunarity=2.0, exponent=4.0, scale=100, brightness=0.0, contrast=0.0, amplify_latent=False, seed=None):
+def normalize(latent, target_min=0.0, target_max=1.0):
+    min_val = latent.min()
+    max_val = latent.max()
+    normalized = (latent - min_val) / (max_val - min_val)
+    scaled = normalized * (target_max - target_min) + target_min
+    return scaled
+    
+def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device='cpu', evolution_factor=0.1, octaves=4, persistence=0.5, lacunarity=2.0, exponent=4.0, scale=100, brightness=0.0, contrast=0.0, seed=None, min_clamp=0.0, max_clamp=1.0):
     """
     Generate a batch of images with a Perlin power fractal effect.
 
@@ -48,7 +56,7 @@ def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device
             Range: [0, 0xffffffffffffffff]
 
     Returns:
-        torch.Tensor: A tensor containing the generated images in the shape (batch_size, 4, height, width).
+        torch.Tensor: A tensor containing the generated images in the shape (batch_size, height, width, 1).
     """
     def fade(t):
         return 6 * t**5 - 15 * t**4 + 10 * t**3
@@ -97,7 +105,7 @@ def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device
     p = torch.randperm(max(width, height)**2, dtype=torch.int32, device=device)
     p = torch.cat((p, p))
 
-    noise_map = torch.zeros(batch_size, height, width, 4, dtype=torch.float32, device=device)
+    noise_map = torch.zeros(batch_size, height, width, dtype=torch.float32, device=device)
 
     X = torch.arange(width, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0) + X
     Y = torch.arange(height, dtype=torch.float32, device=device).unsqueeze(1).unsqueeze(0) + Y
@@ -112,28 +120,13 @@ def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device
         nz = (Z + octave) / scale
 
         noise_values = noise(nx, ny, nz, p) * (amplitude ** exponent)
+        noise_values = noise_values.unsqueeze(-1)
 
-        noise_map += noise_values.unsqueeze(-1)
+        noise_map += noise_values.view(1, width, height) * amplitude
 
     latent = (noise_map + brightness) * (1.0 + contrast)
-    latent = torch.clamp(latent, 0.0, 1.0)
-
-    latent[..., -1] = 1.0
-
-    if amplify_latent:
-        amplification = 2.0
-    else:
-        amplification = 1.0
-        
-    print(f"Amplification: {amplification}")
-
-    min_value = latent.min()
-    max_value = latent.max()
-
-    latent = (latent - min_value) / (max_value - min_value)
-
-    latent = torch.zeros([batch_size, 4, height, width]) + (latent.permute(0, 3, 1, 2).to(device="cpu") * amplification)
-
+    latent = normalize(latent, min_clamp, max_clamp)
+    latent = latent.unsqueeze(-1)
     
     return latent
     
@@ -150,6 +143,7 @@ class WAS_PFN_Latent:
                 "batch_size": ("INT", {"default": 1, "max": 64, "min": 1, "step": 1}),
                 "width": ("INT", {"default": 512, "max": 8192, "min": 64, "step": 1}),
                 "height": ("INT", {"default": 512, "max": 8192, "min": 64, "step": 1}),
+                "resampling": (["nearest-exact", "bilinear", "area", "bicubic", "bislerp"],),
                 "X": ("FLOAT", {"default": 0, "max": 99999999, "min": -99999999, "step": 0.01}),
                 "Y": ("FLOAT", {"default": 0, "max": 99999999, "min": -99999999, "step": 0.01}),
                 "Z": ("FLOAT", {"default": 0, "max": 99999999, "min": -99999999, "step": 0.01}),
@@ -162,7 +156,8 @@ class WAS_PFN_Latent:
                 "exponent": ("FLOAT", {"default": 4.0, "max": 38.0, "min": 0.01, "step": 0.01}),
                 "brightness": ("FLOAT", {"default": 0.0, "max": 1.0, "min": -1.0, "step": 0.01}),
                 "contrast": ("FLOAT", {"default": 0.0, "max": 1.0, "min": -1.0, "step": 0.01}),
-                "amplify_latent": (['false', 'true',],),
+                "clamp_min": ("FLOAT", {"default": 0.0, "max": 10.0, "min": -10.0, "step": 0.01}),
+                "clamp_max": ("FLOAT", {"default": 1.0, "max": 10.0, "min": -10.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}), 
                 "device": (["cpu", "cuda"],),
             },
@@ -176,76 +171,52 @@ class WAS_PFN_Latent:
     FUNCTION = "power_fractal_latent"
 
     CATEGORY = "latent/noise"
-
-    def power_fractal_latent(self, batch_size, width, height, X, Y, Z, evolution, frame, scale, octaves, persistence, lacunarity, exponent, brightness, contrast, amplify_latent, seed, device, optional_vae=None):
     
-        if optional_vae == None:
-            width = width // 8
-            height = height // 8
-            
-        color_intensity = 2
-        masking_intensity = 12
-        amplify_latent = (amplify_latent == "true")
+    def power_fractal_latent(self, batch_size, width, height, resampling, X, Y, Z, evolution, frame, scale, octaves, persistence, lacunarity, exponent, brightness, contrast, clamp_min, clamp_max, seed, device, optional_vae=None):
+                    
+        color_intensity = 1
+        masking_intensity = 1
 
-        modified_rgba_tensors = []
+        channel_tensors = []
         for i in range(batch_size):
             nseed = seed + i * 12
-            rgba_noise_maps = []
+            rgb_noise_maps = []
             
-            for j in range(6):
-                rgba_noise_map = self.generate_noise_map(width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, amplify_latent, nseed + j)
-                rgba_noise_maps.append(rgba_noise_map.squeeze(0))
-
-            red_mask = torch.mean(rgba_noise_maps[3], dim=0, keepdim=True) * torch.mean(rgba_noise_maps[4], dim=0, keepdim=True) * color_intensity
-            green_mask = torch.mean(rgba_noise_maps[3], dim=0, keepdim=True) * torch.mean(rgba_noise_maps[4], dim=0, keepdim=True) * color_intensity
-            blue_mask = torch.mean(rgba_noise_maps[3], dim=0, keepdim=True) * torch.mean(rgba_noise_maps[4], dim=0, keepdim=True) * color_intensity
+            rgb_image = torch.zeros(4, height, width)
             
-            min_noise_value = torch.min(rgba_noise_maps[5])
-            max_noise_value = torch.max(rgba_noise_maps[5])
-
-            desired_min_value = 0.4
-            desired_max_value = 0.8
-
-            scale_factor = (desired_max_value - desired_min_value) / (max_noise_value - min_noise_value)
-            shift_factor = desired_min_value - min_noise_value * scale_factor
-
-            masking_map = (rgba_noise_maps[5][0:1, :, :] * scale_factor + shift_factor)
-
-            masking_map = torch.clamp(masking_map * masking_intensity, 0.0, 1.0)
-
-            red_mask = red_mask * masking_map
-            green_mask = green_mask * masking_map
-            blue_mask = blue_mask * masking_map
+            for j in range(3):
+                rgba_noise_map = self.generate_noise_map(width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, nseed + j, clamp_min, clamp_max)
+                rgb_noise_map = rgba_noise_map.squeeze(-1)
+                rgb_noise_map *= color_intensity
+                rgb_noise_map *= masking_intensity
+                
+                rgb_image[j] = rgb_noise_map
+                
+            rgb_image[3] = torch.ones(height, width)
+            channel_tensors.append(rgb_image)
             
-            alpha_channel = torch.ones_like(rgba_noise_maps[0][0:1, :, :])
-
-            modified_rgba_map = torch.stack([
-                rgba_noise_maps[0][0:1, :, :] * red_mask,
-                rgba_noise_maps[1][1:2, :, :] * green_mask,
-                rgba_noise_maps[2][2:3, :, :] * blue_mask,
-                alpha_channel
-            ], dim=3)
-
-            modified_rgba_tensors.append(modified_rgba_map)
-            
-        tensors = torch.cat(modified_rgba_tensors, dim=0)
+        tensors = torch.stack(channel_tensors)
+        tensors = normalize(tensors)
         
-        if optional_vae == None:
-            latents = tensors.permute(0, 3, 1, 2)
-            return ({'samples': latents}, tensors)
+        if optional_vae is None:
+            latents = F.interpolate(tensors, size=((height // 8), (width // 8)), mode=resampling)
+            return {'samples': latents}, tensors.permute(0, 2, 3, 1)
             
         encoder = nodes.VAEEncode()
         
         latents = []
         for tensor in tensors:
-            latents.append(encoder.encode(optional_vae, tensor.unsqueeze(0))[0]['samples'])
+            tensor = tensor.unsqueeze(0)
+            tensor = tensor.permute(0, 2, 3, 1)
+            latents.append(encoder.encode(optional_vae, tensor)[0]['samples'])
             
         latents = torch.cat(latents)
-
-        return ({'samples': latents}, tensors)
         
-    def generate_noise_map(self, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, amplify_latent, seed):
-        return perlin_power_fractal_batch(1, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, amplify_latent, seed)
+        return {'samples': latents}, tensors.permute(0, 2, 3, 1)
+        
+    def generate_noise_map(self, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed, clamp_min, clamp_max):
+        noise_map = perlin_power_fractal_batch(1, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed, clamp_min, clamp_max)
+        return noise_map
         
 class WAS_PFN_Blend_Latents:
     @classmethod
@@ -261,6 +232,9 @@ class WAS_PFN_Blend_Latents:
             "optional": {
                 "mask": ("MASK",),
                 "set_noise_mask": (["false", "true"],),
+                "normalize": (["false", "true"],),
+                "clamp_min": ("FLOAT", {"default": 0.0, "max": 10.0, "min": -10.0, "step": 0.01}),
+                "clamp_max": ("FLOAT", {"default": 1.0, "max": 10.0, "min": -10.0, "step": 0.01}),
             }
         }
 
@@ -268,7 +242,7 @@ class WAS_PFN_Blend_Latents:
     FUNCTION = "latent_blend"
     CATEGORY = "latent"
 
-    def latent_blend(self, latent_a, latent_b, operation, blend_ratio, blend_strength, mask=None, set_noise_mask=None):
+    def latent_blend(self, latent_a, latent_b, operation, blend_ratio, blend_strength, mask=None, set_noise_mask=None, normalize=None):
         blended_latent = self.blend_latents(latent_a["samples"], latent_b["samples"], operation, blend_ratio, blend_strength)
         if mask is not None:
             blend_mask = self.transform_mask(mask, latent_a["samples"].shape)
@@ -323,9 +297,6 @@ class WAS_PFN_Blend_Latents:
             blended_noise = (latent1 * blend_factor) * noise1 + (latent2 * blend_factor) * noise2
             blended_noise = torch.clamp(blended_noise, 0, 1)
             return blended_noise
-            
-        def normalize(latent):
-            return (latent - latent.min()) / (latent.max() - latent.min())
                 
         blend_factor1 = blend_percentage
         blend_factor2 = 1 - blend_percentage
@@ -357,7 +328,8 @@ class WAS_PFN_Blend_Latents:
         else:
             raise ValueError("Unsupported blending mode. Please choose from 'add', 'multiply', 'divide', 'subtract', 'overlay', 'screen', 'difference', 'exclusion', 'hard_light', 'linear_dodge', 'soft_light', 'custom_noise'.")
 
-        blended_latent = normalize(blended_latent)
+        if normalize and normalize == "true":
+            blended_latent = normalize(blended_latent, clamp_min, clamp_max)
         return blended_latent
 
     def transform_mask(self, mask, shape):
@@ -370,12 +342,12 @@ class WAS_PFN_Blend_Latents:
         return expanded_mask
         
 NODE_CLASS_MAPPINGS = {
-    "WAS_PFN_Latent": WAS_PFN_Latent,
-    "WAS_PFN_Blend_Latents": WAS_PFN_Blend_Latents
+    "Perlin Power Fractal Latent": WAS_PFN_Latent,
+    "Blend Latents (PPF Noise)": WAS_PFN_Blend_Latents
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "WAS_PFN_Latent": "Perlin Power Fractal Noise",
-    "WAS_PFN_Blend_Latents": "Blend Latents (PPF Noise)"
+    "Perlin Power Fractal Latent": "Perlin Power Fractal Noise",
+    "Blend Latents (PPF Noise)": "Blend Latents (PPF Noise)"
 }
 
