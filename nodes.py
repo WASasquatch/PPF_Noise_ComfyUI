@@ -120,14 +120,30 @@ def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device
         nz = (Z + octave) / scale
 
         noise_values = noise(nx, ny, nz, p) * (amplitude ** exponent)
-        
+
         noise_map += noise_values.squeeze(-1) * amplitude
 
-    latent = (noise_map + brightness) * (1.0 + contrast)
-    latent = normalize(latent, min_clamp, max_clamp)
+    
+    latent = normalize(noise_map, min_clamp, max_clamp)
+    latent = (latent + brightness) * (1.0 + contrast)
     latent = latent.unsqueeze(-1)
     
     return latent
+    
+blending_modes = {
+    'add': lambda a, b, factor: (a * factor + b * factor),
+    'multiply': lambda a, b, factor: (a * factor * b * factor),
+    'divide': lambda a, b, factor: (a * factor / b * factor),
+    'subtract': lambda a, b, factor: (a * factor - b * factor),
+    'overlay': lambda a, b, factor: (2 * a * b + a**2 - 2 * a * b * a) * factor if torch.all(b < 0.5) else (1 - 2 * (1 - a) * (1 - b)) * factor,
+    'screen': lambda a, b, factor: (1 - (1 - a) * (1 - b) * (1 - factor)),
+    'difference': lambda a, b, factor: (abs(a - b) * factor),
+    'exclusion': lambda a, b, factor: ((a + b - 2 * a * b) * factor),
+    'hard_light': lambda a, b, factor: (2 * a * b * (a < 0.5).float() + (1 - 2 * (1 - a) * (1 - b)) * (a >= 0.5).float()) * factor,
+    'linear_dodge': lambda a, b, factor: (torch.clamp(a + b, 0, 1) * factor),
+    'soft_light': lambda a, b, factor: (2 * a * b + a ** 2 - 2 * a * b * a if b < 0.5 else 2 * a * (1 - b) + torch.sqrt(a) * (2 * b - 1)) * factor,
+    'random': lambda a, b, factor: (torch.rand_like(a) * a * factor + torch.rand_like(b) * b * factor)
+}
     
 # COMFYUI NODES
 
@@ -218,13 +234,14 @@ class WAS_PFN_Latent:
         return noise_map
         
 class WAS_PFN_Blend_Latents:
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "latent_a": ("LATENT",),
                 "latent_b": ("LATENT",),
-                "operation": (["add", "multiply", "divide", "subtract", "overlay", "hard_light", "soft_light", "screen", "linear_dodge", "difference", "exclusion", "random"],),
+                "operation": (sorted(list(blending_modes.keys())),),
                 "blend_ratio": ("FLOAT", {"default": 0.5, "min": 0.01, "max": 1.0, "step": 0.01}),
                 "blend_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 0.01}),
             },
@@ -234,98 +251,59 @@ class WAS_PFN_Blend_Latents:
                 "normalize": (["false", "true"],),
                 "clamp_min": ("FLOAT", {"default": 0.0, "max": 10.0, "min": -10.0, "step": 0.01}),
                 "clamp_max": ("FLOAT", {"default": 1.0, "max": 10.0, "min": -10.0, "step": 0.01}),
+                "latent2rgb_preview": (["false", "true"],),
             }
         }
 
-    RETURN_TYPES = ("LATENT",)
+    RETURN_TYPES = ("LATENT","IMAGE",)
+    RETURN_NAMES = ("latents", "previews")
     FUNCTION = "latent_blend"
     CATEGORY = "latent"
 
-    def latent_blend(self, latent_a, latent_b, operation, blend_ratio, blend_strength, mask=None, set_noise_mask=None, normalize=None):
-        blended_latent = self.blend_latents(latent_a["samples"], latent_b["samples"], operation, blend_ratio, blend_strength)
+    def latent_blend(self, latent_a, latent_b, operation, blend_ratio, blend_strength, mask=None, set_noise_mask=None, normalize=None, clamp_min=None, clamp_max=None, latent2rgb_preview=None):
+        latent_a_rgb = latent_a["samples"][:, :-1]
+        latent_b_rgb = latent_b["samples"][:, :-1]
+
+        alpha_a = latent_a["samples"][:, -1:]
+        alpha_b = latent_b["samples"][:, -1:]
+        
+        blended_rgb = self.blend_latents(latent_a_rgb, latent_b_rgb, operation, blend_ratio, blend_strength, clamp_min, clamp_max)
+        blended_alpha = torch.ones_like(blended_rgb[:, :1])
+        blended_latent = torch.cat((blended_rgb, blended_alpha), dim=1)
+        
+        if latent2rgb_preview and latent2rgb_preview == "true":
+            l2rgb = torch.tensor([
+                #   R     G      B
+                [0.298, 0.207, 0.208],  # L1
+                [0.187, 0.286, 0.173],  # L2
+                [-0.158, 0.189, 0.264],  # L3
+                [-0.184, -0.271, -0.473],  # L4
+            ], device=blended_latent.device)
+            tensors = torch.einsum('...lhw,lr->...rhw', blended_latent.float(), l2rgb)
+            tensors = ((tensors + 1) / 2).clamp(0, 1)
+            tensors = tensors.movedim(1, -1)          
+        else:
+            tensors = blended_latent.permute(0, 2, 3, 1)
+
         if mask is not None:
             blend_mask = self.transform_mask(mask, latent_a["samples"].shape)
             blended_latent = blend_mask * blended_latent + (1 - blend_mask) * latent_a["samples"]
             if set_noise_mask == 'true':
-                return ({"samples": blended_latent, "noise_mask": mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1]))}, )
+                return ({"samples": blended_latent, "noise_mask": mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1]))}, tensors)
             else:
-                return ({"samples": blended_latent}, )
+                return ({"samples": blended_latent}, tensors)
         else:
-            return ({"samples": blended_latent}, )
-
-    def blend_latents(self, latent1, latent2, mode='add', blend_percentage=0.5, blend_strength=0.5, mask=None):
-        def overlay_blend(latent1, latent2, blend_factor):
-            low = 2 * latent1 * latent2
-            high = 1 - 2 * (1 - latent1) * (1 - latent2)
-            blended_latent = (latent1 * blend_factor) * low + (latent2 * blend_factor) * high
-            return blended_latent
-
-        def screen_blend(latent1, latent2, blend_factor):
-            inverted_latent1 = 1 - latent1
-            inverted_latent2 = 1 - latent2
-            blended_latent = 1 - (inverted_latent1 * inverted_latent2 * (1 - blend_factor))
-            return blended_latent
-
-        def difference_blend(latent1, latent2, blend_factor):
-            blended_latent = abs(latent1 - latent2) * blend_factor
-            return blended_latent
-
-        def exclusion_blend(latent1, latent2, blend_factor):
-            blended_latent = (latent1 + latent2 - 2 * latent1 * latent2) * blend_factor
-            return blended_latent
-
-        def hard_light_blend(latent1, latent2, blend_factor):
-            blended_latent = torch.where(latent2 < 0.5, 2 * latent1 * latent2, 1 - 2 * (1 - latent1) * (1 - latent2)) * blend_factor
-            return blended_latent
-
-        def linear_dodge_blend(latent1, latent2, blend_factor):
-            blended_latent = torch.clamp(latent1 + latent2, 0, 1) * blend_factor
-            return blended_latent
-
-        def soft_light_blend(latent1, latent2, blend_factor):
-            low = 2 * latent1 * latent2 + latent1 ** 2 - 2 * latent1 * latent2 * latent1
-            high = 2 * latent1 * (1 - latent2) + torch.sqrt(latent1) * (2 * latent2 - 1)
-            blended_latent = (latent1 * blend_factor) * low + (latent2 * blend_factor) * high
-            return blended_latent
-
-        def random_noise(latent1, latent2, blend_factor):
-            noise1 = torch.randn_like(latent1)
-            noise2 = torch.randn_like(latent2)
-            noise1 = (noise1 - noise1.min()) / (noise1.max() - noise1.min())
-            noise2 = (noise2 - noise2.min()) / (noise2.max() - noise2.min())
-            blended_noise = (latent1 * blend_factor) * noise1 + (latent2 * blend_factor) * noise2
-            blended_noise = torch.clamp(blended_noise, 0, 1)
-            return blended_noise
-                
+            return ({"samples": blended_latent}, tensors)
+            
+    def blend_latents(self, latent1, latent2, mode='add', blend_percentage=0.5, blend_strength=0.5, mask=None, clamp_min=0.0, clamp_max=1.0):
+        blend_func = blending_modes.get(mode)
+        if blend_func is None:
+            raise ValueError("Unsupported blending mode. Please choose from the supported modes.")
+        
         blend_factor1 = blend_percentage
         blend_factor2 = 1 - blend_percentage
 
-        if mode == 'add':
-            blended_latent = (latent1 * blend_strength * blend_factor1) + (latent2 * blend_strength * blend_factor2)
-        elif mode == 'multiply':
-            blended_latent = (latent1 * blend_strength * blend_factor1) * (latent2 * blend_strength * blend_factor2)
-        elif mode == 'divide':
-            blended_latent = (latent1 * blend_strength * blend_factor1) / (latent2 * blend_strength * blend_factor2)
-        elif mode == 'subtract':
-            blended_latent = (latent1 * blend_strength * blend_factor1) - (latent2 * blend_strength * blend_factor2)
-        elif mode == 'overlay':
-            blended_latent = overlay_blend(latent1, latent2, blend_strength * blend_factor1)
-        elif mode == 'screen':
-            blended_latent = screen_blend(latent1, latent2, blend_strength * blend_factor1)
-        elif mode == 'difference':
-            blended_latent = difference_blend(latent1, latent2, blend_strength * blend_factor1)
-        elif mode == 'exclusion':
-            blended_latent = exclusion_blend(latent1, latent2, blend_strength * blend_factor1)
-        elif mode == 'hard_light':
-            blended_latent = hard_light_blend(latent1, latent2, blend_strength * blend_factor1)
-        elif mode == 'linear_dodge':
-            blended_latent = linear_dodge_blend(latent1, latent2, blend_strength * blend_factor1)
-        elif mode == 'soft_light':
-            blended_latent = soft_light_blend(latent1, latent2, blend_strength * blend_factor1)
-        elif mode == 'random':
-            blended_latent = random_noise(latent1, latent2, blend_strength * blend_factor1)
-        else:
-            raise ValueError("Unsupported blending mode. Please choose from 'add', 'multiply', 'divide', 'subtract', 'overlay', 'screen', 'difference', 'exclusion', 'hard_light', 'linear_dodge', 'soft_light', 'custom_noise'.")
+        blended_latent = blend_func(latent1, latent2, blend_strength * blend_factor1)
 
         if normalize and normalize == "true":
             blended_latent = normalize(blended_latent, clamp_min, clamp_max)
