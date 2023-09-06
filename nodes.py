@@ -1,139 +1,15 @@
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 import math
 
 import nodes
 
-def normalize(latent, target_min=0.0, target_max=1.0):
-    min_val = latent.min()
-    max_val = latent.max()
-    normalized = (latent - min_val) / (max_val - min_val)
-    scaled = normalized * (target_max - target_min) + target_min
-    return scaled
-    
-def perlin_power_fractal_batch(batch_size, width, height, X, Y, Z, frame, device='cpu', evolution_factor=0.1, octaves=4, persistence=0.5, lacunarity=2.0, exponent=4.0, scale=100, brightness=0.0, contrast=0.0, seed=None, min_clamp=0.0, max_clamp=1.0):
-    """
-    Generate a batch of images with a Perlin power fractal effect.
 
-    Parameters:
-        batch_size (int): Number of noisy tensors to generate in the batch.
-            Range: [1, 64]
-        width (int): Width of each tensor in pixels.
-            Range: [64, 8192]
-        height (int): Height of each image in pixels.
-            Range: [64, 8192]
-        X (float): X-coordinate offset for noise sampling.
-            Range: [-99999999, 99999999]
-        Y (float): Y-coordinate offset for noise sampling.
-            Range: [-99999999, 99999999]
-        Z (float): Z-coordinate offset for noise sampling.
-            Range: [-99999999, 99999999]
-        frame (int): The current frame number for time evolution.
-            Range: [0, 99999999]
-        evolution_factor (float): Factor controlling time evolution. Determines how much the noise evolves over time based on the batch index.
-            Range: [0.0, 1.0]
-        octaves (int): Number of octaves for fractal generation. Controls the level of detail and complexity in the output.
-            Range: [1, 8]
-        persistence (float): Persistence parameter for fractal generation. Determines the amplitude decrease of each octave.
-            Range: [0.01, 23.0]
-        lacunarity (float): Lacunarity parameter for fractal generation. Controls the increase in frequency from one octave to the next.
-            Range: [0.01, 99.0]
-        exponent (float): Exponent applied to the noise values. Adjusting this parameter controls the overall intensity and contrast of the output.
-            Range: [0.01, 38.0]
-        scale (float): Scaling factor for frequency of noise. Larger values produce smaller, more detailed patterns, while smaller values create larger patterns.
-            Range: [2, 2048]
-        brightness (float): Adjusts the overall brightness of the generated noise.
-            - -1.0 makes the noise completely black.
-            - 0.0 has no effect on brightness.
-            - 1.0 makes the noise completely white.
-            Range: [-1.0, 1.0]
-        contrast (float): Adjusts the contrast of the generated noise.
-            - -1.0 reduces contrast, enhancing the difference between dark and light areas.
-            - 0.0 has no effect on contrast.
-            - 1.0 increases contrast, enhancing the difference between dark and light areas.
-            Range: [-1.0, 1.0]
-        seed (int, optional): Seed for random number generation. If None, uses random seeds for each batch.
-            Range: [0, 0xffffffffffffffff]
-
-    Returns:
-        torch.Tensor: A tensor containing the generated images in the shape (batch_size, height, width, 1).
-    """
-    def fade(t):
-        return 6 * t**5 - 15 * t**4 + 10 * t**3
-
-    def lerp(t, a, b):
-        return a + t * (b - a)
-
-    def grad(hash, x, y, z):
-        h = hash & 15
-        u = torch.where(h < 8, x, y)
-        v = torch.where(h < 4, y, torch.where((h == 12) | (h == 14), x, z))
-        return torch.where(h & 1 == 0, u, -u) + torch.where(h & 2 == 0, v, -v)
-
-    def noise(x, y, z, p):
-        X = (x.floor() % 255).to(torch.int32)
-        Y = (y.floor() % 255).to(torch.int32)
-        Z = (z.floor() % 255).to(torch.int32)
-
-        x -= x.floor()
-        y -= y.floor()
-        z -= z.floor()
-
-        u = fade(x)
-        v = fade(y)
-        w = fade(z)
-
-        A = p[X] + Y
-        AA = p[A] + Z
-        AB = p[A + 1] + Z
-        B = p[X + 1] + Y
-        BA = p[B] + Z
-        BB = p[B + 1] + Z
-
-        r = lerp(w, lerp(v, lerp(u, grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z)),
-                          lerp(u, grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z))),
-                 lerp(v, lerp(u, grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1)),
-                          lerp(u, grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1))))
-
-        return r
-
-    device = 'cuda' if device == 'cuda' and torch.cuda.is_available() else 'cpu'
-
-    unique_seed = seed if seed is not None else torch.randint(0, 10000, (1,)).item()
-    torch.manual_seed(unique_seed)
-
-    p = torch.randperm(max(width, height)**2, dtype=torch.int32, device=device)
-    p = torch.cat((p, p))
-
-    noise_map = torch.zeros(batch_size, height, width, dtype=torch.float32, device=device)
-
-    X = torch.arange(width, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0) + X
-    Y = torch.arange(height, dtype=torch.float32, device=device).unsqueeze(1).unsqueeze(0) + Y
-    Z = evolution_factor * torch.arange(batch_size, dtype=torch.float32, device=device).unsqueeze(1).unsqueeze(1) + Z + frame
-
-    for octave in range(octaves):
-        frequency = lacunarity ** octave
-        amplitude = persistence ** octave
-
-        nx = (X + frame * evolution_factor) / scale * frequency
-        ny = (Y + frame * evolution_factor) / scale * frequency
-        nz = (Z + octave) / scale
-
-        noise_values = noise(nx, ny, nz, p) * (amplitude ** exponent)
-
-        noise_map += noise_values.squeeze(-1) * amplitude
-
-    
-    latent = normalize(noise_map, min_clamp, max_clamp)
-    latent = (latent + brightness) * (1.0 + contrast)
-    latent = latent.unsqueeze(-1)
-    
-    return latent
-    
 blending_modes = {
     'add': lambda a, b, factor: (a * factor + b * factor),
     'multiply': lambda a, b, factor: (a * factor * b * factor),
-    'divide': lambda a, b, factor: (a * factor / b * factor),
+    'divide': lambda a, b, factor: (a * factor) / (b * factor + 1e-6),
     'subtract': lambda a, b, factor: (a * factor - b * factor),
     'overlay': lambda a, b, factor: (2 * a * b + a**2 - 2 * a * b * a) * factor if torch.all(b < 0.5) else (1 - 2 * (1 - a) * (1 - b)) * factor,
     'screen': lambda a, b, factor: (1 - (1 - a) * (1 - b) * (1 - factor)),
@@ -141,13 +17,248 @@ blending_modes = {
     'exclusion': lambda a, b, factor: ((a + b - 2 * a * b) * factor),
     'hard_light': lambda a, b, factor: (2 * a * b * (a < 0.5).float() + (1 - 2 * (1 - a) * (1 - b)) * (a >= 0.5).float()) * factor,
     'linear_dodge': lambda a, b, factor: (torch.clamp(a + b, 0, 1) * factor),
-    'soft_light': lambda a, b, factor: (2 * a * b + a ** 2 - 2 * a * b * a if b < 0.5 else 2 * a * (1 - b) + torch.sqrt(a) * (2 * b - 1)) * factor,
+    'soft_light': lambda a, b, factor: (2 * a * b + a ** 2 - 2 * a * b * a * (b < 0.5).float()) * factor + (2 * a * (1 - b) + torch.sqrt(a) * (2 * b - 1) * (b >= 0.5).float()) * factor,
     'random': lambda a, b, factor: (torch.rand_like(a) * a * factor + torch.rand_like(b) * b * factor)
 }
+
+def normalize(latent, target_min=None, target_max=None):
+    min_val = latent.min()
+    max_val = latent.max()
     
+    if target_min is None:
+        target_min = min_val
+    if target_max is None:
+        target_max = max_val
+        
+    normalized = (latent - min_val) / (max_val - min_val)
+    scaled = normalized * (target_max - target_min) + target_min
+    return scaled
+    
+class PerlinPowerFractal(nn.Module):
+    """
+    Generate a batch of images with a Perlin power fractal effect.
+
+    Args:
+        width (int): Width of each tensor in pixels. Range: [64, 8192].
+        height (int): Height of each image in pixels. Range: [64, 8192].
+        batch_size (int): Number of noisy tensors to generate in the batch. Range: [1, 64].
+        X (float): X-coordinate offset for noise sampling. Range: [-99999999, 99999999].
+        Y (float): Y-coordinate offset for noise sampling. Range: [-99999999, 99999999].
+        Z (float): Z-coordinate offset for noise sampling. Range: [-99999999, 99999999].
+        frame (int): The current frame number for time evolution. Range: [0, 99999999].
+        evolution_factor (float): Factor controlling time evolution. Determines how much the noise evolves over time based on the batch index. Range: [0.0, 1.0].
+        octaves (int): Number of octaves for fractal generation. Controls the level of detail and complexity in the output. Range: [1, 8].
+        persistence (float): Persistence parameter for fractal generation. Determines the amplitude decrease of each octave. Range: [0.01, 23.0].
+        lacunarity (float): Lacunarity parameter for fractal generation. Controls the increase in frequency from one octave to the next. Range: [0.01, 99.0].
+        exponent (float): Exponent applied to the noise values. Adjusting this parameter controls the overall intensity and contrast of the output. Range: [0.01, 38.0].
+        scale (float): Scaling factor for frequency of noise. Larger values produce smaller, more detailed patterns, while smaller values create larger patterns. Range: [2, 2048].
+        brightness (float): Adjusts the overall brightness of the generated noise.
+            - -1.0 makes the noise completely black.
+            - 0.0 has no effect on brightness.
+            - 1.0 makes the noise completely white. Range: [-1.0, 1.0].
+        contrast (float): Adjusts the contrast of the generated noise.
+            - -1.0 reduces contrast, enhancing the difference between dark and light areas.
+            - 0.0 has no effect on contrast.
+            - 1.0 increases contrast, enhancing the difference between dark and light areas. Range: [-1.0, 1.0].
+        seed (int, optional): Seed for random number generation. If None, uses random seeds for each batch. Range: [0, 0xffffffffffffffff].
+
+    Returns:
+        torch.Tensor: A tensor containing the generated images in the shape (batch_size, height, width, 1).
+    """
+    def __init__(self, width, height):
+        super(PerlinPowerFractal, self).__init__()
+        self.width = width
+        self.height = height
+
+    def forward(self, batch_size, X, Y, Z, frame, device='cpu', evolution_factor=0.1,
+                octaves=4, persistence=0.5, lacunarity=2.0, exponent=4.0, scale=100,
+                brightness=0.0, contrast=0.0, seed=None, min_clamp=0.0, max_clamp=1.0):
+
+        def fade(t):
+            return 6 * t ** 5 - 15 * t ** 4 + 10 * t ** 3
+
+        def lerp(t, a, b):
+            return a + t * (b - a)
+
+        def grad(hash, x, y, z):
+            h = hash & 15
+            u = torch.where(h < 8, x, y)
+            v = torch.where(h < 4, y, torch.where((h == 12) | (h == 14), x, z))
+            return torch.where(h & 1 == 0, u, -u) + torch.where(h & 2 == 0, v, -v)
+
+        def noise(x, y, z, p):
+            X = (x.floor() % 255).to(torch.int32)
+            Y = (y.floor() % 255).to(torch.int32)
+            Z = (z.floor() % 255).to(torch.int32)
+
+            x -= x.floor()
+            y -= y.floor()
+            z -= z.floor()
+
+            u = fade(x)
+            v = fade(y)
+            w = fade(z)
+
+            A = p[X] + Y
+            AA = p[A] + Z
+            AB = p[A + 1] + Z
+            B = p[X + 1] + Y
+            BA = p[B] + Z
+            BB = p[B + 1] + Z
+
+            r = lerp(w, lerp(v, lerp(u, grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z)),
+                              lerp(u, grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z))),
+                     lerp(v, lerp(u, grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1)),
+                              lerp(u, grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1))))
+
+            return r
+
+        device = 'cuda' if device == 'cuda' and torch.cuda.is_available() else 'cpu'
+
+        unique_seed = seed if seed is not None else torch.randint(0, 10000, (1,)).item()
+        torch.manual_seed(unique_seed)
+
+        p = torch.randperm(max(self.width, self.height) ** 2, dtype=torch.int32, device=device)
+        p = torch.cat((p, p))
+
+        noise_map = torch.zeros(batch_size, self.height, self.width, dtype=torch.float32, device=device)
+
+        X = torch.arange(self.width, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0) + X
+        Y = torch.arange(self.height, dtype=torch.float32, device=device).unsqueeze(1).unsqueeze(0) + Y
+        Z = evolution_factor * torch.arange(batch_size, dtype=torch.float32, device=device).unsqueeze(1).unsqueeze(1) + Z + frame
+
+        for octave in range(octaves):
+            frequency = lacunarity ** octave
+            amplitude = persistence ** octave
+
+            nx = (X + frame * evolution_factor) / scale * frequency
+            ny = (Y + frame * evolution_factor) / scale * frequency
+            nz = (Z + octave) / scale
+
+            noise_values = noise(nx, ny, nz, p) * (amplitude ** exponent)
+
+            noise_map += noise_values.squeeze(-1) * amplitude
+
+        noise_map = normalize(noise_map, min_clamp, max_clamp)
+
+        latent = (noise_map + brightness) * (1.0 + contrast)
+        latent = normalize(latent)
+        latent = latent.unsqueeze(-1)
+
+        return latent
+    
+class CrossHatchPowerFractal(nn.Module):
+    """
+    Generate a batch of crosshatch-patterned images with a power fractal effect.
+
+    Args:
+        width (int): Width of each image in pixels.
+        height (int): Height of each image in pixels.
+        frequency (int, optional): Frequency of the crosshatch pattern. Default is 320.
+        octaves (int, optional): Number of octaves for fractal generation. Controls the level of detail and complexity in the output. Default is 12.
+        persistence (float, optional): Persistence parameter for fractal generation. Determines the amplitude decrease of each octave. Default is 1.5.
+        num_colors (int, optional): Number of colors to map the generated noise to. Default is 16.
+        color_tolerance (float, optional): Color tolerance for mapping noise values to colors. Default is 0.05.
+        angle_degrees (float, optional): Angle in degrees for the crosshatch pattern orientation. Default is 45.
+        blur (int, optional): Amount of blur to apply to the generated image. Default is 2.
+        brightness (float, optional): Adjusts the overall brightness of the generated images. Default is 0.0.
+        contrast (float, optional): Adjusts the contrast of the generated images. Default is 0.0.
+        clamp_min (float, optional): Minimum value to clamp the pixel values to. Default is 0.0.
+        clamp_max (float, optional): Maximum value to clamp the pixel values to. Default is 1.0.
+
+    Returns:
+        torch.Tensor: A tensor containing the generated images in the shape (batch_size, height, width, 3).
+    """
+    def __init__(self, width, height, frequency=320, octaves=12, persistence=1.5, num_colors=16, color_tolerance=0.05, angle_degrees=45, blur=2, brightness=0.0, contrast=0.0, clamp_min=0.0, clamp_max=1.0):
+        super(CrossHatchPowerFractal, self).__init__()
+        self.width = width
+        self.height = height
+        self.frequency = frequency
+        self.num_octaves = octaves
+        self.persistence = persistence
+        self.angle_radians = math.radians(angle_degrees)
+        self.num_colors = num_colors
+        self.color_tolerance = color_tolerance
+        self.blur = blur
+        self.brightness = brightness
+        self.contrast = contrast
+        self.clamp_min = clamp_min
+        self.clamp_max = clamp_max
+
+    def forward(self, batch_size=1, device='cpu', seed=1):
+        device_index = torch.cuda.current_device() if device.startswith('cuda') else 0 
+
+        with torch.random.fork_rng(devices=[device_index]):
+            x = torch.linspace(0, 1, self.width, dtype=torch.float32, device=device)
+            y = torch.linspace(0, 1, self.height, dtype=torch.float32, device=device)
+            x, y = torch.meshgrid(x, y, indexing="ij")
+
+            batched_noises = []
+
+            for i in range(batch_size):
+                batch_seed = int(seed + i)
+                noise = torch.zeros(self.width, self.height, device=device)
+
+                for octave in range(self.num_octaves):
+                    frequency = self.frequency * 2 ** octave
+                    octave_noise = self.generate_octave(x, y, frequency)
+                    noise += octave_noise * self.persistence ** octave
+
+                noise = (noise - noise.min()) / (noise.max() - noise.min())
+                colored_noise = self.apply_color_mapping(noise, device, batch_seed)
+                colored_noise = colored_noise.cpu()
+
+                r_channel = colored_noise[:, :, 0]
+                g_channel = colored_noise[:, :, 1]
+                b_channel = colored_noise[:, :, 2]
+
+                kernel_size = int(self.blur * 2 + 1)
+                uniform_kernel = torch.ones(1, 1, kernel_size, kernel_size) / (kernel_size * kernel_size)
+
+                blurred_r = F.conv2d(r_channel.unsqueeze(0).unsqueeze(0), uniform_kernel, padding=int(self.blur))
+                blurred_g = F.conv2d(g_channel.unsqueeze(0).unsqueeze(0), uniform_kernel, padding=int(self.blur))
+                blurred_b = F.conv2d(b_channel.unsqueeze(0).unsqueeze(0), uniform_kernel, padding=int(self.blur))
+                blurred_noise = torch.cat((blurred_r, blurred_g, blurred_b), dim=1)
+                blurred_noise = F.interpolate(blurred_noise, size=(self.height, self.width), mode='bilinear')
+
+                batched_noises.append(blurred_noise.permute(0, 2, 3, 1))
+
+            batched_noises = torch.cat(batched_noises, dim=0).to(device='cpu')
+            batched_noises = (batched_noises + self.brightness) * (1.0 + self.contrast)
+            
+            return normalize(batched_noises, self.clamp_min, self.clamp_max)
+
+    def generate_octave(self, x, y, frequency):
+        grid_hatch_x = torch.sin(x * frequency * math.pi)
+        grid_hatch_y = torch.sin(y * frequency * math.pi)
+
+        grid_hatch_x = (grid_hatch_x - grid_hatch_x.min()) / (grid_hatch_x.max() - grid_hatch_x.min())
+        grid_hatch_y = (grid_hatch_y - grid_hatch_y.min()) / (grid_hatch_y.max() - grid_hatch_y.min())
+        grid_hatch = grid_hatch_x + grid_hatch_y
+
+        return grid_hatch
+
+    def apply_color_mapping(self, noise, device, seed):
+        print(device)
+        print(seed)
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
+        random_colors = torch.rand(self.num_colors, 3, generator=generator, dtype=torch.float32, device=device)
+
+        noise_scaled = noise * (self.num_colors - 1)
+        tolerance = self.color_tolerance * (self.num_colors - 1)
+        noise_scaled_rounded = torch.round(noise_scaled)
+        colored_noise = random_colors[noise_scaled_rounded.long()]
+
+        return colored_noise
+
+        
 # COMFYUI NODES
 
-class WAS_PFN_Latent:
+
+# PERLIN POWER FRACTAL NOISE LATENT
+
+class PPFNoiseNode:
     def __init__(self):
         pass
 
@@ -166,7 +277,7 @@ class WAS_PFN_Latent:
                 "frame": ("INT", {"default": 0, "max": 99999999, "min": 0, "step": 1}),
                 "scale": ("FLOAT", {"default": 5, "max": 2048, "min": 2, "step": 0.01}),
                 "octaves": ("INT", {"default": 8, "max": 8, "min": 1, "step": 1}),
-                "persistence": ("FLOAT", {"default": 1.0, "max": 23.0, "min": 0.01, "step": 0.01}),
+                "persistence": ("FLOAT", {"default": 1.5, "max": 23.0, "min": 0.01, "step": 0.01}),
                 "lacunarity": ("FLOAT", {"default": 2.0, "max": 99.0, "min": 0.01, "step": 0.01}),
                 "exponent": ("FLOAT", {"default": 4.0, "max": 38.0, "min": 0.01, "step": 0.01}),
                 "brightness": ("FLOAT", {"default": 0.0, "max": 1.0, "min": -1.0, "step": 0.01}),
@@ -191,6 +302,10 @@ class WAS_PFN_Latent:
                     
         color_intensity = 1
         masking_intensity = 1
+        
+        batch_size = int(batch_size)
+        width = int(width)
+        height = int(height)
 
         channel_tensors = []
         for i in range(batch_size):
@@ -208,6 +323,7 @@ class WAS_PFN_Latent:
                 rgb_image[j] = rgb_noise_map
                 
             rgb_image[3] = torch.ones(height, width)
+            
             channel_tensors.append(rgb_image)
             
         tensors = torch.stack(channel_tensors)
@@ -230,10 +346,75 @@ class WAS_PFN_Latent:
         return {'samples': latents}, tensors.permute(0, 2, 3, 1)
         
     def generate_noise_map(self, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed, clamp_min, clamp_max):
-        noise_map = perlin_power_fractal_batch(1, width, height, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed, clamp_min, clamp_max)
+        PPF = PerlinPowerFractal(width, height)
+        noise_map = PPF(1, X, Y, Z, frame, device, evolution, octaves, persistence, lacunarity, exponent, scale, brightness, contrast, seed, clamp_min, clamp_max)
         return noise_map
+ 
+ 
+# CROSS-HATCH POWER FRACTAL LATENT
         
-class WAS_PFN_Blend_Latents:
+class PPFNCrossHatchNode:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "batch_size": ("INT", {"default": 1, "max": 64, "min": 1, "step": 1}),
+                "width": ("INT", {"default": 512, "max": 8192, "min": 64, "step": 1}),
+                "height": ("INT", {"default": 512, "max": 8192, "min": 64, "step": 1}),
+                "resampling": (["nearest-exact", "bilinear", "area", "bicubic", "bislerp"],),
+                "frequency": ("FLOAT", {"default": 320.0, "max": 1024.0, "min": 0.001, "step": 0.001}),
+                "octaves": ("INT", {"default": 12, "max": 32, "min": 1, "step": 1}),
+                "persistence": ("FLOAT", {"default": 1.5, "max": 2.0, "min": 0.001, "step": 0.001}),
+                "num_colors": ("INT", {"default": 16, "max": 256, "min": 2, "step": 1}),
+                "color_tolerance": ("FLOAT", {"default": 0.05, "max": 1.0, "min": 0.001, "step": 0.001}),
+                "angle_degrees": ("FLOAT", {"default": 45.0, "max": 360.0, "min": 0.0, "step": 0.01}),
+                "brightness": ("FLOAT", {"default": 0.0, "max": 1.0, "min": -1.0, "step": 0.001}),
+                "contrast": ("FLOAT", {"default": 0.0, "max": 1.0, "min": -1.0, "step": 0.001}),
+                "blur": ("FLOAT", {"default": 2.5, "max": 1024, "min": 0, "step": 0.01}),
+                "clamp_min": ("FLOAT", {"default": 0.0, "max": 10.0, "min": -10.0, "step": 0.01}),
+                "clamp_max": ("FLOAT", {"default": 1.0, "max": 10.0, "min": -10.0, "step": 0.01}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}), 
+                "device": (["cpu", "cuda"],),
+            },
+            "optional": {
+                "optional_vae": ("VAE",),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT","IMAGE")
+    RETURN_NAMES = ("latents","previews")
+    FUNCTION = "cross_hatch"
+
+    CATEGORY = "latent/noise"
+    
+    def cross_hatch(self, batch_size, width, height, resampling, frequency, octaves, persistence, color_tolerance, num_colors, angle_degrees, brightness, contrast, blur, clamp_min, clamp_max, seed, device, optional_vae=None):
+
+        cross_hatch = CrossHatchPowerFractal(width=width, height=height, frequency=frequency, octaves=octaves, persistence=persistence, num_colors=num_colors, color_tolerance=color_tolerance, angle_degrees=angle_degrees, blur=blur, clamp_min=clamp_min, clamp_max=clamp_max)
+        tensors = cross_hatch(batch_size, device, seed).to(device="cpu")
+        tensors = torch.cat([tensors, torch.ones(batch_size, height, width, 1, dtype=tensors.dtype, device='cpu')], dim=-1)
+                
+        if optional_vae is None:
+            latents = tensors.permute(0, 3, 1, 2)
+            latents = F.interpolate(latents, size=((height // 8), (width // 8)), mode=resampling)
+            return {'samples': latents}, tensors
+            
+        encoder = nodes.VAEEncode()
+        
+        latents = []
+        for tensor in tensors:
+            tensor = tensor.unsqueeze(0)
+            latents.append(encoder.encode(optional_vae, tensor)[0]['samples'])
+            
+        latents = torch.cat(latents)
+        
+        return {'samples': latents}, tensors
+        
+# BLEND LATENTS
+        
+class PPFNBlendLatents:
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -261,8 +442,11 @@ class WAS_PFN_Blend_Latents:
     CATEGORY = "latent"
 
     def latent_blend(self, latent_a, latent_b, operation, blend_ratio, blend_strength, mask=None, set_noise_mask=None, normalize=None, clamp_min=None, clamp_max=None, latent2rgb_preview=None):
+        
         latent_a_rgb = latent_a["samples"][:, :-1]
         latent_b_rgb = latent_b["samples"][:, :-1]
+        
+        assert latent_a_rgb.shape == latent_b_rgb.shape, f"Input latents must have the same shape, but got: a {latent_a_rgb.shape}, b {latent_b_rgb.shape}"
 
         alpha_a = latent_a["samples"][:, -1:]
         alpha_b = latent_b["samples"][:, -1:]
@@ -318,13 +502,47 @@ class WAS_PFN_Blend_Latents:
         del mask, resized_mask
         return expanded_mask
         
+# IMAGES TO LATENTS
+        
+class PPFNImageAsLatent:
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "resampling": (["nearest-exact", "bilinear", "area", "bicubic", "bislerp"],),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT","IMAGE",)
+    RETURN_NAMES = ("latents", "images")
+    FUNCTION = "image_latent"
+    CATEGORY = "latent"
+    
+    def image_latent(self, images, resampling):
+
+        if images.shape[-1] != 4:
+            ones_channel = torch.ones(images.shape[:-1] + (1,), dtype=images.dtype, device=images.device)
+            images = torch.cat((images, ones_channel), dim=-1)
+        
+        latents = images.permute(0, 3, 1, 2)
+        latents = F.interpolate(latents, size=((images.shape[1] // 8), (images.shape[2] // 8)), mode=resampling)
+        
+        return {'samples': latents}, images
+        
+        
 NODE_CLASS_MAPPINGS = {
-    "Perlin Power Fractal Latent (PPF Noise)": WAS_PFN_Latent,
-    "Blend Latents (PPF Noise)": WAS_PFN_Blend_Latents
+    "Perlin Power Fractal Latent (PPF Noise)": PPFNoiseNode,
+    "Cross-Hatch Power Fractal (PPF Noise)": PPFNCrossHatchNode,
+    "Blend Latents (PPF Noise)": PPFNBlendLatents,
+    "Images as Latents (PPF Noise)": PPFNImageAsLatent,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Perlin Power Fractal Latent (PPF Noise)": "Perlin Power Fractal Noise (PPF Noise)",
-    "Blend Latents (PPF Noise)": "Blend Latents (PPF Noise)"
+    "Cross-Hatch Power Fractal (PPF Noise)": "Cross-Hatch Power Fractal (PPF Noise)",
+    "Blend Latents (PPF Noise)": "Blend Latents (PPF Noise)",
+    "Images as Latents (PPF Noise)": "Images as Latents (PPF Noise)",
 }
 
