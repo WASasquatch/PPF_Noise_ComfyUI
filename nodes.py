@@ -131,9 +131,9 @@ class PerlinPowerFractal(nn.Module):
             frequency = lacunarity ** octave
             amplitude = persistence ** octave
 
-            nx = (X + frame * evolution_factor) / scale * frequency
-            ny = (Y + frame * evolution_factor) / scale * frequency
-            nz = (Z + octave) / scale
+            nx = X / scale * frequency
+            ny = Y / scale * frequency
+            nz = (Z + frame * evolution_factor) / scale * frequency
 
             noise_values = noise(nx, ny, nz, p) * (amplitude ** exponent)
 
@@ -186,9 +186,9 @@ class CrossHatchPowerFractal(nn.Module):
         self.clamp_max = clamp_max
 
     def forward(self, batch_size=1, device='cpu', seed=1):
-        device_index = torch.cuda.current_device() if device.startswith('cuda') else 0 
+        device_index = [torch.cuda.current_device()] if device.startswith('cuda') else None
 
-        with torch.random.fork_rng(devices=[device_index]):
+        with torch.random.fork_rng(devices=device_index):
             x = torch.linspace(0, 1, self.width, dtype=torch.float32, device=device)
             y = torch.linspace(0, 1, self.height, dtype=torch.float32, device=device)
             x, y = torch.meshgrid(x, y, indexing="ij")
