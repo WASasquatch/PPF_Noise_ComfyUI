@@ -8,18 +8,35 @@ import nodes
 
 blending_modes = {
     'add': lambda a, b, factor: (a * factor + b * factor),
-    'multiply': lambda a, b, factor: (a * factor * b * factor),
-    'divide': lambda a, b, factor: (a * factor) / (b * factor + 1e-6),
-    'subtract': lambda a, b, factor: (a * factor - b * factor),
+    'bislerp': lambda a, b, t: normalize((1 - t) * a + t * b),
+    'color dodge': lambda a, b, factor: a / (1 - b + 1e-6),
+    'cosine interp': lambda a, b, t: (a + b - (a - b) * torch.cos(t * torch.tensor(math.pi))) / 2,
+    'cuberp': lambda a, b, t: a + (b - a) * (3 * t ** 2 - 2 * t ** 3),
+    'difference': lambda a, b, factor: normalize(abs(a - b) * factor),
+    'exclusion': lambda a, b, factor: normalize((a + b - 2 * a * b) * factor),
+    'glow': lambda a, b, factor: torch.where(a <= 1, a ** 2 / (1 - b + 1e-6), b * (a - 1) / (a + 1e-6)),
+    'hard light': lambda a, b, factor: (2 * a * b * (a < 0.5).float() + (1 - 2 * (1 - a) * (1 - b)) * (a >= 0.5).float()) * factor,
+    'lerp': lambda a, b, t: (1 - t) * a + t * b,
+    'linear dodge': lambda a, b, factor: normalize(a + b * factor),
+    'linear light': lambda a, b, factor: torch.where(b <= 0.5, a + 2 * b - 1, a + 2 * (b - 0.5)),
+    'multiply': lambda a, b, factor: normalize(a * factor * b * factor),
     'overlay': lambda a, b, factor: (2 * a * b + a**2 - 2 * a * b * a) * factor if torch.all(b < 0.5) else (1 - 2 * (1 - a) * (1 - b)) * factor,
-    'screen': lambda a, b, factor: (1 - (1 - a) * (1 - b) * (1 - factor)),
-    'difference': lambda a, b, factor: (abs(a - b) * factor),
-    'exclusion': lambda a, b, factor: ((a + b - 2 * a * b) * factor),
-    'hard_light': lambda a, b, factor: (2 * a * b * (a < 0.5).float() + (1 - 2 * (1 - a) * (1 - b)) * (a >= 0.5).float()) * factor,
-    'linear_dodge': lambda a, b, factor: (torch.clamp(a + b, 0, 1) * factor),
-    'soft_light': lambda a, b, factor: (2 * a * b + a ** 2 - 2 * a * b * a * (b < 0.5).float()) * factor + (2 * a * (1 - b) + torch.sqrt(a) * (2 * b - 1) * (b >= 0.5).float()) * factor,
-    'random': lambda a, b, factor: (torch.rand_like(a) * a * factor + torch.rand_like(b) * b * factor)
+    'pin_light': lambda a, b, factor: torch.where(b <= 0.5, torch.min(a, 2 * b), torch.max(a, 2 * b - 1)),
+    'random': lambda a, b, factor: normalize(torch.rand_like(a) * a * factor + torch.rand_like(b) * b * factor),
+    'reflect': lambda a, b, factor: torch.where(b <= 1, b ** 2 / (1 - a + 1e-6), a * (b - 1) / (b + 1e-6)),
+    'screen': lambda a, b, factor: normalize(1 - (1 - a) * (1 - b) * (1 - factor)),
+    'slerp': lambda a, b, t: normalize(((a * torch.sin((1 - t) * torch.acos(torch.clamp(torch.sum(a * b, dim=1), -1.0, 1.0))) + b * torch.sin(t * torch.acos(torch.clamp(torch.sum(a * b, dim=1), -1.0, 1.0)))) / torch.sin(torch.acos(torch.clamp(torch.sum(a * b, dim=1), -1.0, 1.0))))),
+    'subtract': lambda a, b, factor: (a * factor - b * factor),
+    'vivid light': lambda a, b, factor: torch.where(b <= 0.5, a / (1 - 2 * b + 1e-6), (a + 2 * b - 1) / (2 * (1 - b) + 1e-6)),
 }
+    
+def create_gaussian_kernel(k_size, sigma):
+    """Create a 2D Gaussian kernel."""
+    kernel = torch.tensor([[math.exp(-((i - k_size[0] // 2) ** 2 + (j - k_size[1] // 2) ** 2) / (2 * sigma ** 2))
+                            for j in range(k_size[1])]
+                           for i in range(k_size[0])])
+    kernel = kernel / kernel.sum()
+    return kernel
 
 def normalize(latent, target_min=None, target_max=None):
     min_val = latent.min()
@@ -239,8 +256,6 @@ class CrossHatchPowerFractal(nn.Module):
         return grid_hatch
 
     def apply_color_mapping(self, noise, device, seed):
-        print(device)
-        print(seed)
         generator = torch.Generator(device=device)
         generator.manual_seed(seed)
         random_colors = torch.rand(self.num_colors, 3, generator=generator, dtype=torch.float32, device=device)
@@ -482,10 +497,13 @@ class PPFNBlendLatents:
     def blend_latents(self, latent1, latent2, mode='add', blend_percentage=0.5, blend_strength=0.5, mask=None, clamp_min=0.0, clamp_max=1.0):
         blend_func = blending_modes.get(mode)
         if blend_func is None:
-            raise ValueError("Unsupported blending mode. Please choose from the supported modes.")
+            raise ValueError(f"Unsupported blending mode. Please choose from the supported modes: {', '.join(list(blending_modes.keys()))}")
         
         blend_factor1 = blend_percentage
         blend_factor2 = 1 - blend_percentage
+        
+        print(latent1.shape)
+        print(latent2.shape)
 
         blended_latent = blend_func(latent1, latent2, blend_strength * blend_factor1)
 
