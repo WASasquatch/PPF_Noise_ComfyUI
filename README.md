@@ -195,9 +195,9 @@ This node provides a method for blending two latent tensors.
 
 ---
 
-## **Image as Latent** Parameters
+## **Images as Latents** Parameters
 
-This node converts `IMAGES` to `LATENT` format, without encoding them. Really only useful for raw noise.
+This node converts `IMAGE` to `LATENT` format, without encoding them. Really only useful for raw noise.
 
 ### Required:
 - `images` (IMAGE): Input images to be converted into latent tensors.
