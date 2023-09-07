@@ -18,6 +18,8 @@ Generate a batch of images with a Perlin power fractal effect.
 
 ## **Perlin Power Fractal Noise** Parameters
 
+This node generates perlin power fractal noise
+
 ### Required:
 - `batch_size` (int): Number of noisy tensors to generate in the batch.
     - Range: [1, 64]
@@ -79,9 +81,70 @@ Generate a batch of images with a Perlin power fractal effect.
 
 ---
 
-## **WAS_PFN_Blend_Latents** Parameters
+## **Cross-Hatch Power Fractal** Parameters
 
-This class provides a method for blending two latent tensors.
+This node generates a batch of cross-hatch power fractal noise patterns.
+
+### Required:
+- `batch_size` (int): Number of noisy tensors to generate in the batch.
+    - Range: [1, 64]
+- `width` (int): Width of each tensor in pixels.
+    - Range: [64, 8192]
+- `height` (int): Height of each image in pixels.
+- `resampling` (string): This parameter determines the resampling method used for scaling noise to the latent size. Choose from the following options:
+    - "**nearest-exact**": Nearest-Exact Resampling:
+        - Nearest-neighbor resampling selects the pixel value from the nearest source pixel, resulting in a blocky, pixelated appearance. It preserves the exact values without interpolation.
+    - "**bilinear**": Bilinear Resampling:
+        - Bilinear interpolation takes a weighted average of the four nearest source pixels, producing smoother transitions between pixels. It's a good choice for general image resizing.
+    - "**area**": Area Resampling (Antialiasing):
+        - Resampling using pixel area relation, also known as antialiasing, computes pixel values based on the areas of contributing source pixels. It reduces aliasing artifacts and is suitable for preserving fine details.
+    - "**bicubic**": Bicubic Resampling:
+        - Bicubic interpolation uses a cubic polynomial to compute pixel values based on the 16 nearest source pixels. It provides smoother transitions and better detail preservation, suitable for high-quality resizing.
+    - "**bislerp**": Bislerp Resampling (Bilinear Sinc Interpolation):
+        - Bislerp interpolation combines bilinear simplicity with sinc function interpolation, resulting in high-quality resizing with reduced artifacts. It offers a balance between quality and computational cost.
+- `frequency` (float): Frequency parameter for fractal generation. Determines the frequency of the cross-hatch pattern.
+    - Range: [0.001, 1024.0]
+- `octaves` (int): Number of octaves for fractal generation. Controls the level of detail and complexity in the output.
+    - Range: [1, 32]
+- `persistence` (float): Persistence parameter for fractal generation. Determines the amplitude decrease of each octave.
+    - Range: [0.001, 2.0]
+- `color_tolerance` (float): Tolerance parameter for color mapping. Affects the variety of colors in the output.
+    - Range: [0.001, 1.0]
+- `num_colors` (int): Number of colors to use in the output.
+    - Range: [2, 256]
+- `angle_degrees` (float): Angle in degrees for the cross-hatch pattern.
+    - Range: [0.0, 360.0]
+- `brightness` (float): Adjusts the overall brightness of the generated noise.
+    - -1.0 makes the noise completely black.
+    - 0.0 has no effect on brightness.
+    - 1.0 makes the noise completely white.
+    - Range: [-1.0, 1.0]
+- `contrast` (float): Adjusts the contrast of the generated noise.
+    - -1.0 reduces contrast, enhancing the difference between dark and light areas.
+    - 0.0 has no effect on contrast.
+    - 1.0 increases contrast, enhancing the difference between dark and light areas.
+    - Range: [-1.0, 1.0]
+- `blur` (float): Blur parameter for the generated noise.
+    - Range: [0.0, 1024.0]
+- `clamp_min` (float): The floor range of the noise.
+    - Range: [-10.0, 10.0]
+- `clamp_max` (float): The ceiling range of the noise.
+    - Range: [-10.0, 10.0]
+- `seed` (int, optional): Seed for random number generation. If None, uses random seeds for each batch.
+    - Range: [0, 0xffffffffffffffff]
+- `device` (string): Specify the device to generate noise on, either "cpu" or "cuda".
+
+### Optional:
+- `optional_vae` (VAE, optional): The optional VAE for encoding the noise.
+
+### Returns
+- `tuple` (LATENT, IMAGE): A tuple containing the generated latent tensor and image tensor.
+
+---
+
+## **Blend Latents** Parameters
+
+This node provides a method for blending two latent tensors.
 
 ### Required:
 - `latent_a` (LATENT, required): The first input latent tensor to be blended.
@@ -129,3 +192,28 @@ This class provides a method for blending two latent tensors.
     - Range: [-10.0, 10.0]
 ### Returns
 - `tuple` (LATENT,): A tuple containing the blended latent tensor.
+
+---
+
+## **Images as Latents** Parameters
+
+This node converts `IMAGE` to `LATENT` format, without encoding them. Really only useful for raw noise.
+
+### Required:
+- `images` (IMAGE): Input images to be converted into latent tensors.
+- `resampling` (string): This parameter determines the resampling method used for scaling images to the latent size. Choose from the following options:
+    - "**nearest-exact**": Nearest-Exact Resampling:
+        - Nearest-neighbor resampling selects the pixel value from the nearest source pixel, resulting in a blocky, pixelated appearance. It preserves the exact values without interpolation.
+    - "**bilinear**": Bilinear Resampling:
+        - Bilinear interpolation takes a weighted average of the four nearest source pixels, producing smoother transitions between pixels. It's a good choice for general image resizing.
+    - "**area**": Area Resampling (Antialiasing):
+        - Resampling using pixel area relation, also known as antialiasing, computes pixel values based on the areas of contributing source pixels. It reduces aliasing artifacts and is suitable for preserving fine details.
+    - "**bicubic**": Bicubic Resampling:
+        - Bicubic interpolation uses a cubic polynomial to compute pixel values based on the 16 nearest source pixels. It provides smoother transitions and better detail preservation, suitable for high-quality resizing.
+    - "**bislerp**": Bislerp Resampling (Bilinear Sinc Interpolation):
+        - Bislerp interpolation combines bilinear simplicity with sinc function interpolation, resulting in high-quality resizing with reduced artifacts. It offers a balance between quality and computational cost.
+
+### Returns
+- `tuple` (LATENT, IMAGE): A tuple containing the generated latent tensor and the input images.
+
+---
