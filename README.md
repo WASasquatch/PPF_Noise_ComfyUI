@@ -150,30 +150,27 @@ This node provides a method for blending two latent tensors.
 - `latent_a` (LATENT, required): The first input latent tensor to be blended.
 - `latent_b` (LATENT, required): The second input latent tensor to be blended.
 - `operation` (string, required): The blending operation to apply. Choose from the following options:
-    - "add": Additive blending.
-        - Adds the values of `latent_a` and `latent_b`.
-    - "multiply": Multiplicative blending.
-        - Multiplies the values of `latent_a` and `latent_b`.
-    - "divide": Division blending.
-        - Divides the values of `latent_a` by `latent_b`.
-    - "subtract": Subtraction blending.
-        - Subtracts the values of `latent_b` from `latent_a`.
-    - "overlay": Overlay blending.
-        - Applies an overlay blending effect.
-    - "hard_light": Hard light blending.
-        - Applies a hard light blending effect.
-    - "soft_light": Soft light blending.
-        - Applies a soft light blending effect.
-    - "screen": Screen blending.
-        - Applies a screen blending effect.
-    - "linear_dodge": Linear dodge blending.
-        - Applies a linear dodge blending effect.
-    - "difference": Difference blending.
-        - Computes the absolute difference between `latent_a` and `latent_b`.
-    - "exclusion": Exclusion blending.
-        - Applies an exclusion blending effect.
-    - "random": Random noise blending.
-        - Applies a random noise blending effect.
+  - **add**: Combines two images by adding their pixel values together. 
+  - **bislerp**: Interpolates between two images smoothly using the factor `t`.
+  - **color dodge**: Brightens the base image based on the blend image. It creates a high-contrast effect by making bright areas of the blend image affect the base image more.
+  - **cosine interp**: Interpolates between two images using a cosine function.
+  - **cuberp**: Blends two images by applying a cubic interpolation.
+  - **difference**: Subtracts one image from another and takes the absolute value. It highlights the differences between the two images.
+  - **exclusion**: Combines two images using an exclusion formula, resulting in a unique contrast effect.
+  - **glow**: Create a glow effect based on the blend image. Similar to pin light, but darker. 
+  - **hard light**: Combines two images in a way that enhances the contrast. It creates a sharp transition between light and dark areas.
+  - **lerp**: Linearly interpolates between two images based on the factor. It creates a simple linear transition.
+  - **linear dodge**: Brightens the base image by adding the blend image, creating a high-key effect.
+  - **linear light**: Blends two images to enhance contrast. It brightens or darkens the base image based on the blend image.
+  - **multiply**: Multiplies the pixel values of two images, resulting in a darker image with increased contrast.
+  - **overlay**: Combines two images using an overlay formula. It enhances the contrast and creates a dramatic effect.
+  - **pin light**: Combines two images in a way that preserves the details and intensifies the colors.
+  - **random**: Adds random noise to both images, creating a noisy and textured effect.
+  - **reflect**: Combines two images in a reflection formula. A interesting blend to say the least. 
+  - **screen**: Brightens the base image based on the blend image, resulting in a high-key effect.
+  - **slerp**: Spherically interpolates between two images, creating a smooth and curved transition.
+  - **subtract**: Subtracts the blend image from the base image, resulting in a darker image.
+  - **vivid light**: Enhances the vividness of colors in the base image based on the blend image. It intensifies the colors.
 - `blend_ratio` (FLOAT, required): The blend ratio between `latent_a` and `latent_b`. 
     - Default: 0.5
     - Range: [0.01, 1.0]
