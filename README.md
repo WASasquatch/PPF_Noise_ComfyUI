@@ -1,11 +1,11 @@
-# Perlin Power Fractal Noise for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) [Predecessor of PowerNoiseSuite](https://github.com/WASasquatch/PowerNoiseSuite/)
+## Perlin Power Fractal Noise for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) [[Predecessor of PowerNoiseSuite](https://github.com/WASasquatch/PowerNoiseSuite/)]
  Perlin Power Fractal Noisey Latents
 
 <img src="https://github.com/WASasquatch/PPF_Noise_ComfyUI/assets/1151589/56d3c514-0462-4b1c-adaa-7fe6977f1bcd" width="600">
 
 # Power Fractal Latent Generator
 
-Generate a batch of images with a Perlin power fractal effect.
+Generate a batch of images with a Perlin power fractal effect. This repo is deprecated and replaced by [PowerNoiseSuite](https://github.com/WASasquatch/PowerNoiseSuite/)
 
 ---
 
