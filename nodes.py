@@ -7,36 +7,39 @@ import nodes
 
 
 blending_modes = {
-    'add': lambda a, b, factor: (a * factor + b * factor),
+    'add': lambda a, b, t: (a * t + b * t),
     'bislerp': lambda a, b, t: normalize((1 - t) * a + t * b),
-    'color dodge': lambda a, b, factor: a / (1 - b + 1e-6),
+    'color dodge': lambda a, b, t: a / (1 - b + 1e-6),
     'cosine interp': lambda a, b, t: (a + b - (a - b) * torch.cos(t * torch.tensor(math.pi))) / 2,
     'cuberp': lambda a, b, t: a + (b - a) * (3 * t ** 2 - 2 * t ** 3),
-    'difference': lambda a, b, factor: normalize(abs(a - b) * factor),
-    'exclusion': lambda a, b, factor: normalize((a + b - 2 * a * b) * factor),
-    'glow': lambda a, b, factor: torch.where(a <= 1, a ** 2 / (1 - b + 1e-6), b * (a - 1) / (a + 1e-6)),
-    'hard light': lambda a, b, factor: (2 * a * b * (a < 0.5).float() + (1 - 2 * (1 - a) * (1 - b)) * (a >= 0.5).float()) * factor,
+    'difference': lambda a, b, t: normalize(abs(a - b) * t),
+    'exclusion': lambda a, b, t: normalize((a + b - 2 * a * b) * t),
+    'hslerp': lambda a, b, t: (
+        (1 - t) * a + t * b + 
+        ((torch.norm(b - a, dim=1, keepdim=True) / 6) * torch.tensor([1.0, 0.0, 0.0], device=a.device, dtype=a.dtype)
+            .unsqueeze(0).unsqueeze(2).unsqueeze(3).expand_as(a)) 
+        if t < 0.5 
+        else 
+        (1 - t) * a + t * b - 
+        ((torch.norm(b - a, dim=1, keepdim=True) / 6) * torch.tensor([1.0, 0.0, 0.0], device=a.device, dtype=a.dtype)
+            .unsqueeze(0).unsqueeze(2).unsqueeze(3).expand_as(a))
+    ),
+    'glow': lambda a, b, t: torch.where(a <= 1, a ** 2 / (1 - b + 1e-6), b * (a - 1) / (a + 1e-6)),
+    'hard light': lambda a, b, t: (2 * a * b * (a < 0.5).float() + (1 - 2 * (1 - a) * (1 - b)) * (a >= 0.5).float()) * t,
+    'inject': lambda a, b, t: a + b * t,
     'lerp': lambda a, b, t: (1 - t) * a + t * b,
-    'linear dodge': lambda a, b, factor: normalize(a + b * factor),
-    'linear light': lambda a, b, factor: torch.where(b <= 0.5, a + 2 * b - 1, a + 2 * (b - 0.5)),
-    'multiply': lambda a, b, factor: normalize(a * factor * b * factor),
-    'overlay': lambda a, b, factor: (2 * a * b + a**2 - 2 * a * b * a) * factor if torch.all(b < 0.5) else (1 - 2 * (1 - a) * (1 - b)) * factor,
-    'pin_light': lambda a, b, factor: torch.where(b <= 0.5, torch.min(a, 2 * b), torch.max(a, 2 * b - 1)),
-    'random': lambda a, b, factor: normalize(torch.rand_like(a) * a * factor + torch.rand_like(b) * b * factor),
-    'reflect': lambda a, b, factor: torch.where(b <= 1, b ** 2 / (1 - a + 1e-6), a * (b - 1) / (b + 1e-6)),
-    'screen': lambda a, b, factor: normalize(1 - (1 - a) * (1 - b) * (1 - factor)),
+    'linear dodge': lambda a, b, t: normalize(a + b * t),
+    'linear light': lambda a, b, t: torch.where(b <= 0.5, a + 2 * b - 1, a + 2 * (b - 0.5)),
+    'multiply': lambda a, b, t: normalize(a * t * b * t),
+    'overlay': lambda a, b, t: (2 * a * b + a**2 - 2 * a * b * a) * t if torch.all(b < 0.5) else (1 - 2 * (1 - a) * (1 - b)) * t,
+    'pin light': lambda a, b, t: torch.where(b <= 0.5, torch.min(a, 2 * b), torch.max(a, 2 * b - 1)),
+    'random': lambda a, b, t: normalize(torch.rand_like(a) * a * t + torch.rand_like(b) * b * t),
+    'reflect': lambda a, b, t: torch.where(b <= 1, b ** 2 / (1 - a + 1e-6), a * (b - 1) / (b + 1e-6)),
+    'screen': lambda a, b, t: normalize(1 - (1 - a) * (1 - b) * (1 - t)),
     'slerp': lambda a, b, t: normalize(((a * torch.sin((1 - t) * torch.acos(torch.clamp(torch.sum(a * b, dim=1), -1.0, 1.0))) + b * torch.sin(t * torch.acos(torch.clamp(torch.sum(a * b, dim=1), -1.0, 1.0)))) / torch.sin(torch.acos(torch.clamp(torch.sum(a * b, dim=1), -1.0, 1.0))))),
-    'subtract': lambda a, b, factor: (a * factor - b * factor),
-    'vivid light': lambda a, b, factor: torch.where(b <= 0.5, a / (1 - 2 * b + 1e-6), (a + 2 * b - 1) / (2 * (1 - b) + 1e-6)),
+    'subtract': lambda a, b, t: (a * t - b * t),
+    'vivid light': lambda a, b, t: torch.where(b <= 0.5, a / (1 - 2 * b + 1e-6), (a + 2 * b - 1) / (2 * (1 - b) + 1e-6)),
 }
-    
-def create_gaussian_kernel(k_size, sigma):
-    """Create a 2D Gaussian kernel."""
-    kernel = torch.tensor([[math.exp(-((i - k_size[0] // 2) ** 2 + (j - k_size[1] // 2) ** 2) / (2 * sigma ** 2))
-                            for j in range(k_size[1])]
-                           for i in range(k_size[0])])
-    kernel = kernel / kernel.sum()
-    return kernel
 
 def normalize(latent, target_min=None, target_max=None):
     min_val = latent.min()
@@ -439,7 +442,7 @@ class PPFNBlendLatents:
                 "latent_b": ("LATENT",),
                 "operation": (sorted(list(blending_modes.keys())),),
                 "blend_ratio": ("FLOAT", {"default": 0.5, "min": 0.01, "max": 1.0, "step": 0.01}),
-                "blend_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 0.01}),
+                "blend_strength": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}),
             },
             "optional": {
                 "mask": ("MASK",),
@@ -458,15 +461,15 @@ class PPFNBlendLatents:
 
     def latent_blend(self, latent_a, latent_b, operation, blend_ratio, blend_strength, mask=None, set_noise_mask=None, normalize=None, clamp_min=None, clamp_max=None, latent2rgb_preview=None):
         
-        latent_a_rgb = latent_a["samples"][:, :-1]
-        latent_b_rgb = latent_b["samples"][:, :-1]
-        
-        assert latent_a_rgb.shape == latent_b_rgb.shape, f"Input latents must have the same shape, but got: a {latent_a_rgb.shape}, b {latent_b_rgb.shape}"
+        latent_a = latent_a["samples"][:, :-1]
+        latent_b = latent_b["samples"][:, :-1]
 
-        alpha_a = latent_a["samples"][:, -1:]
-        alpha_b = latent_b["samples"][:, -1:]
+        assert latent_a.shape == latent_b.shape, f"Input latents must have the same shape, but got: a {latent_a.shape}, b {latent_b.shape}"
+
+        alpha_a = latent_a[:, -1:]
+        alpha_b = latent_b[:, -1:]
         
-        blended_rgb = self.blend_latents(latent_a_rgb, latent_b_rgb, operation, blend_ratio, blend_strength, clamp_min, clamp_max)
+        blended_rgb = self.blend_latents(latent_a, latent_b, operation, blend_ratio, blend_strength, clamp_min, clamp_max)
         blended_alpha = torch.ones_like(blended_rgb[:, :1])
         blended_latent = torch.cat((blended_rgb, blended_alpha), dim=1)
         
@@ -499,12 +502,11 @@ class PPFNBlendLatents:
         if blend_func is None:
             raise ValueError(f"Unsupported blending mode. Please choose from the supported modes: {', '.join(list(blending_modes.keys()))}")
         
-        blend_factor1 = blend_percentage
-        blend_factor2 = 1 - blend_percentage
-        
         print(latent1.shape)
         print(latent2.shape)
-
+        
+        blend_factor1 = blend_percentage
+        blend_factor2 = 1 - blend_percentage
         blended_latent = blend_func(latent1, latent2, blend_strength * blend_factor1)
 
         if normalize and normalize == "true":
